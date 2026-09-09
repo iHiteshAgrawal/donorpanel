@@ -65,6 +65,8 @@ The agent roster and orchestration are explicitly pending. The user wants to cho
 
 `agents/`, `nodes/` and `tools/` are intentionally empty. Do not populate them speculatively.
 
+Build order agreed with the user: state and memory first (done), then the five request phases left to right, then the scheduled graph, then safety and observability. The FastAPI platform edge is deliberately skipped for the demo.
+
 Two constraints already agreed for whenever that decision lands:
 
 - All matching arithmetic belongs in deterministic custom nodes (`strands.multiagent.base.MultiAgentBase` subclasses with no model call). Agents reason about numbers they are handed; they never compute them.
@@ -100,21 +102,51 @@ src/donorpanel/
   nodes/       empty, deterministic custom graph nodes
   tools/       empty, @tool functions
   channels/    base interface plus console, telegram, email
+  domain/      dataclass models and enums, no AWS imports
   policies/    condition YAML plus loader
-  storage/     empty, session repository
+  storage/     single table schema, domain repository, session repository
   config.py    environment configuration
   main.py      CLI entrypoint
 tests/
 ```
+
+## Storage
+
+One DynamoDB table, `donorpanel` by default, with a `pool-index` GSI.
+
+| Entity | pk | sk | gsi1pk | gsi1sk |
+| --- | --- | --- | --- | --- |
+| Donor | `DONOR#<id>` | `PROFILE` | `POOL#<region>#<group>` | `DONOR#<id>` |
+| Patient | `PATIENT#<id>` | `PROFILE` | | |
+| Credit | `PATIENT#<id>` | `CREDIT` | | |
+| Request | `REQUEST#<id>` | `PROFILE` | | |
+| Contact | `REQUEST#<id>` | `CONTACT#<donor id>` | | |
+| Session | `SESSION#<id>` | `SESSION` | | |
+| SessionAgent | `SESSION#<id>` | `AGENT#<agent id>` | | |
+| SessionMessage | `SESSION#<id>` | `MSG#<agent id>#<id padded to 12>` | | |
+| MultiAgent | `SESSION#<id>` | `MULTIAGENT#<id>` | | |
+
+Message ids are zero padded because the sort key is lexical. Without padding, message 10 sorts before message 9.
+
+`PanelRepository` handles domain entities. `DynamoDBSessionRepository` implements the Strands `SessionRepository` ABC and is passed to `RepositorySessionManager`. It also implements the optional `create_multi_agent`, `read_multi_agent` and `update_multi_agent` methods, which the base class leaves as `NotImplementedError`, so a whole graph can checkpoint and resume.
+
+Floats are rejected by DynamoDB, so `table.encode` converts them to `Decimal` on the way in and `table.decode` converts back on the way out.
+
+Tests run against `moto`, so no AWS account or Docker is needed. Set `DYNAMODB_ENDPOINT` to point at DynamoDB Local instead.
 
 ## Commands
 
 ```
 uv venv && uv pip install -e ".[dev]"
 .venv/bin/donorpanel status
+.venv/bin/donorpanel init
+.venv/bin/donorpanel seed
 .venv/bin/donorpanel ping --to demo --body "Channel check."
 .venv/bin/python -m pytest tests -q
+.venv/bin/ruff check src tests
 ```
+
+`init` and `seed` need real credentials or a local endpoint. `status`, `ping` and the tests do not.
 
 Copy `.env.example` to `.env` and fill it in for real channels. Without credentials only `console` is available, which is enough for tests.
 
