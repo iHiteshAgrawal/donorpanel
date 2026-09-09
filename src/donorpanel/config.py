@@ -17,8 +17,8 @@ class Config:
         )
     )
     ses_sender_email: str | None = field(default_factory=lambda: os.getenv("SES_SENDER_EMAIL") or None)
-    table_name: str = field(default_factory=lambda: os.getenv("DONORPANEL_TABLE", "donorpanel"))
-    dynamodb_endpoint: str | None = field(default_factory=lambda: os.getenv("DYNAMODB_ENDPOINT") or None)
+    bucket: str | None = field(default_factory=lambda: os.getenv("DONORPANEL_BUCKET") or None)
+    local_root: str = field(default_factory=lambda: os.getenv("DONORPANEL_LOCAL_ROOT", "data/local"))
     env: str = field(default_factory=lambda: os.getenv("DONORPANEL_ENV", "local"))
 
 

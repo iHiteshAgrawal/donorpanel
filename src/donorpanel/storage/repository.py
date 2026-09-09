@@ -1,5 +1,3 @@
-from boto3.dynamodb.conditions import Key
-
 from ..domain import (
     Contact,
     ContactStatus,
@@ -11,55 +9,53 @@ from ..domain import (
     now,
     to_item,
 )
-from . import table as t
+from . import objects as o
+from .local import FileStore
 
 
 class PanelRepository:
-    def __init__(self, table=None):
-        self._table = table or t.get_table()
+    def __init__(self, store: "o.ObjectStore | FileStore | None" = None):
+        if store is None:
+            from . import store as default_store
 
-    def _put(self, key: dict, obj, extra: dict | None = None) -> None:
-        item = {**key, **t.encode(to_item(obj)), **(extra or {})}
-        self._table.put_item(Item=item)
-
-    def _get(self, key: dict) -> dict | None:
-        got = self._table.get_item(Key=key).get("Item")
-        return t.decode(got) if got else None
-
-    @staticmethod
-    def _strip(item: dict) -> dict:
-        return {k: v for k, v in item.items()
-                if k not in (t.PK, t.SK, t.GSI1PK, t.GSI1SK)}
+            store = default_store()
+        self.store = store
 
     def put_donor(self, donor: Donor) -> None:
-        self._put(t.donor_key(donor.donor_id), donor,
-                  t.pool_key(donor.region, donor.blood_group, donor.donor_id))
+        previous = self.get_donor(donor.donor_id)
+        if previous and (previous.region, previous.blood_group) != (donor.region, donor.blood_group):
+            self.store.delete(o.POOL.format(region=previous.region,
+                                            blood_group=previous.blood_group,
+                                            donor_id=previous.donor_id))
+        self.store.put(o.DONOR.format(donor_id=donor.donor_id), to_item(donor))
+        self.store.touch(o.POOL.format(region=donor.region,
+                                       blood_group=donor.blood_group,
+                                       donor_id=donor.donor_id))
 
     def get_donor(self, donor_id: str) -> Donor | None:
-        item = self._get(t.donor_key(donor_id))
-        return Donor(**self._strip(item)) if item else None
+        item = self.store.get(o.DONOR.format(donor_id=donor_id))
+        return Donor(**item) if item else None
 
     def list_pool(self, region: str, blood_group: str) -> list[Donor]:
-        res = self._table.query(
-            IndexName=t.GSI1,
-            KeyConditionExpression=Key(t.GSI1PK).eq(f"POOL#{region}#{blood_group}"),
-        )
-        return [Donor(**self._strip(t.decode(i))) for i in res.get("Items", [])]
+        prefix = o.POOL.format(region=region, blood_group=blood_group, donor_id="")
+        ids = [key.rsplit("/", 1)[-1] for key in self.store.keys(prefix)]
+        found = [self.get_donor(donor_id) for donor_id in ids]
+        return [d for d in found if d is not None]
 
     def put_patient(self, patient: Patient) -> None:
-        self._put(t.patient_key(patient.patient_id), patient)
+        self.store.put(o.PATIENT.format(patient_id=patient.patient_id), to_item(patient))
 
     def get_patient(self, patient_id: str) -> Patient | None:
-        item = self._get(t.patient_key(patient_id))
-        return Patient(**self._strip(item)) if item else None
+        item = self.store.get(o.PATIENT.format(patient_id=patient_id))
+        return Patient(**item) if item else None
 
     def put_request(self, request: Request) -> None:
         request.updated_at = now()
-        self._put(t.request_key(request.request_id), request)
+        self.store.put(o.REQUEST.format(request_id=request.request_id), to_item(request))
 
     def get_request(self, request_id: str) -> Request | None:
-        item = self._get(t.request_key(request_id))
-        return Request(**self._strip(item)) if item else None
+        item = self.store.get(o.REQUEST.format(request_id=request_id))
+        return Request(**item) if item else None
 
     def set_status(self, request_id: str, status: RequestStatus) -> Request:
         request = self.get_request(request_id)
@@ -70,23 +66,22 @@ class PanelRepository:
         return request
 
     def put_contact(self, contact: Contact) -> None:
-        self._put(t.contact_key(contact.request_id, contact.donor_id), contact)
+        self.store.put(o.CONTACT.format(request_id=contact.request_id,
+                                        donor_id=contact.donor_id), to_item(contact))
 
     def list_contacts(self, request_id: str) -> list[Contact]:
-        res = self._table.query(
-            KeyConditionExpression=Key(t.PK).eq(f"REQUEST#{request_id}")
-            & Key(t.SK).begins_with("CONTACT#"),
-        )
-        items = [Contact(**self._strip(t.decode(i))) for i in res.get("Items", [])]
-        return sorted(items, key=lambda c: c.rank)
+        prefix = o.CONTACT.format(request_id=request_id, donor_id="").rsplit("/", 1)[0] + "/"
+        found = [self.store.get(key) for key in self.store.keys(prefix)]
+        contacts = [Contact(**item) for item in found if item]
+        return sorted(contacts, key=lambda c: c.rank)
 
     def pledged_units(self, request_id: str) -> int:
         return sum(1 for c in self.list_contacts(request_id)
                    if c.status in (ContactStatus.PLEDGED, ContactStatus.DONATED))
 
     def get_credit(self, patient_id: str) -> Credit:
-        item = self._get(t.credit_key(patient_id))
-        return Credit(**self._strip(item)) if item else Credit(patient_id=patient_id)
+        item = self.store.get(o.CREDIT.format(patient_id=patient_id))
+        return Credit(**item) if item else Credit(patient_id=patient_id)
 
     def put_credit(self, credit: Credit) -> None:
-        self._put(t.credit_key(credit.patient_id), credit)
+        self.store.put(o.CREDIT.format(patient_id=credit.patient_id), to_item(credit))

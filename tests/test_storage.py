@@ -14,8 +14,8 @@ from donorpanel.storage import PanelRepository
 
 
 @pytest.fixture
-def repo(ddb):
-    return PanelRepository(table=ddb)
+def repo(store):
+    return PanelRepository(store=store)
 
 
 def donor(donor_id="d1", group="B+", region="IN-TN", **kw):
@@ -73,3 +73,26 @@ def test_credit_defaults_and_outstanding(repo):
     credit.units_repaid = 1
     repo.put_credit(credit)
     assert repo.get_credit("p1").outstanding == 3
+
+
+def test_pool_marker_moves_when_donor_changes_group(repo):
+    repo.put_donor(donor("d1", "B+", "IN-TN"))
+    moved = donor("d1", "O-", "IN-TN")
+    repo.put_donor(moved)
+    assert repo.list_pool("IN-TN", "B+") == []
+    assert [d.donor_id for d in repo.list_pool("IN-TN", "O-")] == ["d1"]
+
+
+def test_session_manager_persists_agent_state(store):
+    from strands import Agent
+    from strands.session.s3_session_manager import S3SessionManager
+
+    manager = S3SessionManager(session_id="s-live", bucket=store._bucket,
+                               prefix="sessions/", region_name="us-east-1")
+    agent = Agent(agent_id="verifier", session_manager=manager)
+    agent.state.set("request_id", "r1")
+    manager.sync_agent(agent)
+
+    reopened = S3SessionManager(session_id="s-live", bucket=store._bucket,
+                                prefix="sessions/", region_name="us-east-1")
+    assert reopened.read_agent("s-live", "verifier").state["request_id"] == "r1"

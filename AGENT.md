@@ -112,6 +112,68 @@ tests/
 
 ## Storage
 
+Two interchangeable backends behind one interface (`put`, `get`, `touch`, `delete`, `keys`). `FileStore` writes JSON under `data/local`. `ObjectStore` writes the same JSON to S3. `storage.store()` picks one: S3 when `DONORPANEL_BUCKET` is set, local otherwise. `PanelRepository` never knows which.
+
+Sessions follow the same rule through `storage.session_manager()`, returning the SDK's `S3SessionManager` or `FileSessionManager`. Both implement `create_multi_agent`, `read_multi_agent` and `update_multi_agent`, so an entire graph can checkpoint and resume, not just a single agent.
+
+Key layout, identical in both backends:
+
+```
+donors/<donor id>.json
+pool/<region>/<blood group>/<donor id>      empty marker
+patients/<patient id>.json
+credits/<patient id>.json
+requests/<request id>.json
+contacts/<request id>/<donor id>.json
+sessions/...                                 owned by the session manager
+```
+
+`list_pool` lists the `pool/` prefix and then reads each donor, which is how the region plus blood group query stays cheap without a secondary index. `put_donor` deletes the stale marker when a donor changes region or blood group, otherwise they would appear in two pools.
+
+DynamoDB was the original design and was cut: the AWS account in use has a service control policy that denies DynamoDB, S3 `CreateBucket` and EventBridge `PutRule` outright. Bedrock and CloudWatch Logs work. Do not reintroduce DynamoDB without checking that policy.
+
+Tests use `moto` for the S3 path and `tmp_path` for the local path, so nothing needs credentials.
+
+## Conventions
+
+- **Never use em dashes.** Anywhere. Not in code, comments, docs, commits or chat. Use commas, colons, parentheses or two sentences.
+- **No comments or docstrings** unless explaining a genuine catch: a non-obvious workaround, an ordering constraint, a bug being worked around. No module headers, no restating the next line.
+  - One exception: Strands `@tool` functions build their tool spec from the docstring. The first paragraph becomes the tool description and the `Args:` section describes parameters. Those docstrings are functional and required.
+- **Clean folder names.** Short, lowercase, readable. No abbreviations, no underscore soup.
+- **Use the Strands MCP server** (`search_docs`, then `fetch_doc`) for any Strands API question. Never answer from memory; the SDK moves fast.
+
+## Stack
+
+Python 3.10 or newer, currently running 3.13.
+
+- `strands-agents` 1.55.0, `strands-agents-tools` 0.8.8
+- `boto3` for AWS, `httpx` for Telegram, `pyyaml` for policies
+- `uv` for environment and dependency management
+
+Planned AWS services: Bedrock for reasoning, DynamoDB behind a custom `SessionRepository` for network state and checkpointing, EventBridge and Lambda for transfusion schedules and registry sweeps, Bedrock Knowledge Base for eligibility rules, Guardrails to block medical determinations, S3 with KMS for records, AgentCore Runtime for session isolation. Amazon Connect, Polly and Transcribe only once voice is added.
+
+Note: Strands ships `FileSessionManager`, `S3SessionManager`, `SnapshotSessionManager` and `RepositorySessionManager`. There is no built-in DynamoDB session manager, so DynamoDB persistence means implementing a `SessionRepository` and passing it to `RepositorySessionManager`.
+
+`BEDROCK_MODEL_ID` is unset by default and the SDK default is used. Verify a real inference profile id with `aws bedrock list-inference-profiles` before pinning one.
+
+## Layout
+
+```
+src/donorpanel/
+  agents/      empty, pending architecture decision
+  nodes/       empty, deterministic custom graph nodes
+  tools/       empty, @tool functions
+  channels/    base interface plus console, telegram, email
+  domain/      dataclass models and enums, no AWS imports
+  policies/    condition YAML plus loader
+  storage/     single table schema, domain repository, session repository
+  config.py    environment configuration
+  main.py      CLI entrypoint
+tests/
+```
+
+## Storage
+
 One DynamoDB table, `donorpanel` by default, with a `pool-index` GSI.
 
 | Entity | pk | sk | gsi1pk | gsi1sk |
@@ -146,7 +208,7 @@ uv venv && uv pip install -e ".[dev]"
 .venv/bin/ruff check src tests
 ```
 
-`init` and `seed` need real credentials or a local endpoint. `status`, `ping` and the tests do not.
+Everything above runs with no AWS credentials. Set `DONORPANEL_BUCKET` to switch storage to S3.
 
 Copy `.env.example` to `.env` and fill it in for real channels. Without credentials only `console` is available, which is enough for tests.
 

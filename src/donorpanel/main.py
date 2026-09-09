@@ -10,23 +10,26 @@ def status() -> None:
     active = registry()
     print(f"donorpanel {__version__}  env={config.env}  region={config.aws_region}")
     print(f"model: {config.bedrock_model_id or 'sdk default'}")
-    print(f"table: {config.table_name}  endpoint={config.dynamodb_endpoint or 'aws'}")
+    print(f"storage: {'s3://' + config.bucket if config.bucket else config.local_root}")
     print(f"channels: {', '.join(active) or 'none'}")
     print(f"policies: {', '.join(policies.available())}")
 
 
 def init() -> None:
-    from .storage import ensure_table
+    from .storage import ensure_bucket
 
-    ensure_table()
-    print(f"table {config.table_name} ready")
+    if config.bucket:
+        ensure_bucket()
+        print(f"bucket {config.bucket} ready")
+    else:
+        print(f"local storage at {config.local_root}, set DONORPANEL_BUCKET to use S3")
 
 
 def seed() -> None:
     from .domain import Condition, Donor, Patient
-    from .storage import PanelRepository, ensure_table
+    from .storage import PanelRepository
 
-    ensure_table()
+    init()
     repo = PanelRepository()
     repo.put_patient(Patient(
         patient_id="p-ravi", name="Ravi", condition=Condition.THALASSEMIA,
@@ -46,7 +49,7 @@ def seed() -> None:
             channel=channel, address=f"{donor_id}@example.test", city="Coimbatore",
             consent=consent, last_donation=last, language="ta",
         ))
-    print(f"seeded 1 patient and {len(pool)} donors into {config.table_name}")
+    print(f"seeded 1 patient and {len(pool)} donors")
 
 
 async def ping(channel: str, recipient: str, body: str) -> None:
