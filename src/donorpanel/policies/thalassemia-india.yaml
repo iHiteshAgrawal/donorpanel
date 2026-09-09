@@ -1,0 +1,21 @@
+id: thalassemia-india
+label: Thalassemia major, India
+condition: thalassemia
+region: IN
+cadence:
+  interval_days: 21
+  units_per_session: 2
+  lead_time_days: 10
+matching:
+  require_abo_rh: true
+  antigen_requirements: []
+  prefer_repeat_donors: true
+donor_eligibility:
+  min_days_between_donations: 90
+  min_age: 18
+  max_age: 65
+  min_weight_kg: 45
+outreach:
+  cohort_size: 8
+  escalation_hours: [0, 24, 48]
+  channels: [telegram, email]

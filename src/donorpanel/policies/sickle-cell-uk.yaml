@@ -1,0 +1,22 @@
+id: sickle-cell-uk
+label: Sickle cell disease, NHSBT
+condition: sickle_cell
+region: GB
+cadence:
+  interval_days: 28
+  units_per_session: 6
+  lead_time_days: 14
+matching:
+  require_abo_rh: true
+  antigen_requirements: [Ro, C-negative, E-negative, K-negative]
+  require_hbs_negative: true
+  prefer_repeat_donors: true
+donor_eligibility:
+  min_days_between_donations: 84
+  min_age: 17
+  max_age: 66
+  min_weight_kg: 50
+outreach:
+  cohort_size: 12
+  escalation_hours: [0, 24, 72]
+  channels: [email, telegram]
