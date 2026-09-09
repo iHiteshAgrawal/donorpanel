@@ -7,8 +7,10 @@ from strands.multiagent.base import MultiAgentBase, MultiAgentResult, NodeResult
 from strands.telemetry.metrics import EventLoopMetrics
 
 
-class DeterministicNode(MultiAgentBase):
-    name = "deterministic"
+class JsonNode(MultiAgentBase):
+    """Wraps a dict-returning run() into the NodeResult shape a Graph expects."""
+
+    name = "node"
 
     def __init__(self, name: str | None = None):
         super().__init__()

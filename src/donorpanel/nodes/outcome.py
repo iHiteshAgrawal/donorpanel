@@ -1,10 +1,10 @@
 from typing import Any
 
 from ..domain import RequestStatus
-from .base import DeterministicNode, find_block, task_text
+from .base import JsonNode, find_block, task_text
 
 
-class MarkVerified(DeterministicNode):
+class MarkVerified(JsonNode):
     name = "accept"
 
     def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:
@@ -16,7 +16,7 @@ class MarkVerified(DeterministicNode):
                 "needed_by": request.needed_by}
 
 
-class CloseRejected(DeterministicNode):
+class CloseRejected(JsonNode):
     name = "close"
 
     def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:

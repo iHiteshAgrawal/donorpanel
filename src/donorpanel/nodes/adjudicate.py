@@ -1,11 +1,11 @@
 from typing import Any
 
-from .base import DeterministicNode, find_block, task_text
+from .base import JsonNode, find_block, task_text
 
 DECISIONS = ("verified", "rejected")
 
 
-class Adjudicate(DeterministicNode):
+class Adjudicate(JsonNode):
     name = "adjudicate"
 
     def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:

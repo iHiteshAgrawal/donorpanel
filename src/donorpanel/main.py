@@ -53,25 +53,40 @@ def seed() -> None:
         patient_id="p-ravi", name="Ravi", condition=Condition.THALASSEMIA,
         blood_group="B+", policy_id="thalassemia-india", region="IN-TN",
         city="Coimbatore", hospital="Government Hospital",
-        lat=11.0168, lon=76.9558,
     ))
     pool = [
-        ("d-asha", "Asha", "B+", "telegram", "ta", True, ago(160), 11.02, 76.96, 0),
-        ("d-vikram", "Vikram", "B+", "email", "ta", True, ago(20), 11.05, 76.99, 0),
-        ("d-meera", "Meera", "O-", "telegram", "ta", True, None, 11.01, 76.94, 0),
-        ("d-suresh", "Suresh", "B+", "telegram", "ta", False, ago(400), 11.03, 76.97, 0),
-        ("d-kavya", "Kavya", "O+", "telegram", "ta", True, ago(210), 11.30, 77.40, 3),
-        ("d-arun", "Arun", "B-", "email", "ta", True, ago(120), 13.08, 80.27, 0),
-        ("d-divya", "Divya", "A+", "telegram", "ta", True, ago(300), 11.00, 76.95, 0),
+        ("d-asha", "Asha", "B+", "telegram", True, ago(160), "Coimbatore", 0),
+        ("d-vikram", "Vikram", "B+", "email", True, ago(20), "Coimbatore", 0),
+        ("d-meera", "Meera", "O-", "telegram", True, None, "Tiruppur", 0),
+        ("d-suresh", "Suresh", "B+", "telegram", False, ago(400), "Coimbatore", 0),
+        ("d-kavya", "Kavya", "O+", "telegram", True, ago(210), "Erode", 3),
+        ("d-arun", "Arun", "B-", "email", True, ago(120), "Chennai", 0),
+        ("d-divya", "Divya", "A+", "telegram", True, ago(300), "Coimbatore", 0),
+        ("d-nithya", "Nithya", "B+", "telegram", True, ago(95), "Pollachi", 1),
     ]
-    for donor_id, name, group, channel, lang, consent, last, lat, lon, contacts in pool:
+    for donor_id, name, group, channel, consent, last, city, contacts in pool:
         repo.put_donor(Donor(
             donor_id=donor_id, name=name, blood_group=group, region="IN-TN",
-            channel=channel, address=f"{donor_id}@example.test", city="Coimbatore",
-            consent=consent, last_donation=last, language=lang, lat=lat, lon=lon,
+            channel=channel, address=f"{donor_id}@example.test", city=city,
+            consent=consent, last_donation=last, language="ta",
             contacts_this_month=contacts,
         ))
-    print(f"seeded 1 patient and {len(pool)} donors")
+    print(f"seeded 1 patient and {len(pool)} donors, no coordinates")
+    print("run 'donorpanel geocode' to resolve their cities")
+
+
+def geocode() -> None:
+    from .geo import GeocodeDenied, backfill
+    from .storage import PanelRepository
+
+    try:
+        report = backfill(PanelRepository())
+    except GeocodeDenied as exc:
+        raise SystemExit(
+            f"{exc}. Add geo-places:Geocode to the IAM policy."
+        ) from exc
+    print(f"filled {report['filled']}, missed {report['missed']}, "
+          f"already set {report['skipped']}, api calls {report['api_calls']}")
 
 
 def request(patient_id: str, needed_by: str, units: int) -> None:
@@ -99,6 +114,7 @@ def main() -> None:
     sub.add_parser("init")
     sub.add_parser("seed")
     sub.add_parser("reset")
+    sub.add_parser("geocode")
 
     req = sub.add_parser("request")
     req.add_argument("--patient", required=True)
@@ -119,6 +135,8 @@ def main() -> None:
         seed()
     elif args.command == "reset":
         reset()
+    elif args.command == "geocode":
+        geocode()
     elif args.command == "request":
         request(args.patient, args.needed_by, args.units)
     else:

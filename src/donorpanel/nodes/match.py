@@ -10,10 +10,10 @@ from ..domain import (
     ineligible_reason,
     score,
 )
-from .base import DeterministicNode, find_block, task_text
+from .base import JsonNode, find_block, task_text
 
 
-class EligibilityResolver(DeterministicNode):
+class EligibilityResolver(JsonNode):
     name = "eligibility"
 
     def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:
@@ -56,7 +56,7 @@ class EligibilityResolver(DeterministicNode):
         }
 
 
-class CohortRanker(DeterministicNode):
+class CohortRanker(JsonNode):
     name = "rank"
 
     def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:

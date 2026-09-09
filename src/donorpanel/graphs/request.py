@@ -4,7 +4,6 @@ from typing import Any
 
 from strands.multiagent import GraphBuilder
 
-from ..agents import verifier
 from ..nodes import (
     Adjudicate,
     CloseRejected,
@@ -12,6 +11,7 @@ from ..nodes import (
     EligibilityResolver,
     IntakeNormalizer,
     MarkVerified,
+    RequestVerifier,
 )
 from ..nodes.base import find_block, node_text
 from ..storage import PanelRepository
@@ -32,7 +32,7 @@ def is_rejected(state) -> bool:
 def build(agent=None, session_manager=None):
     builder = GraphBuilder()
     builder.add_node(IntakeNormalizer(), "intake")
-    builder.add_node(agent or verifier.build(), "verify")
+    builder.add_node(agent or RequestVerifier(), "verify")
     builder.add_node(Adjudicate(), "adjudicate")
     builder.add_node(MarkVerified(), "accept")
     builder.add_node(CloseRejected(), "close")

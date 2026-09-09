@@ -76,7 +76,13 @@ Phase 2 Match is built and is **entirely deterministic**. Blood matching is rule
 
 `CohortRanker` reads the eligible list out of the upstream node's output rather than `invocation_state`, because relying on that dict being shared by reference across nodes is not something the Python SDK documents.
 
-`Adjudicate` exists because a conditional edge must never depend on a model emitting exact JSON. It parses the verdict out of the verifier's prose, and when there is no usable decision it **fails closed**: rejected, `decided_by: fallback`, held for human review. This is not theoretical, it happened on the first live run. Nova reasoned correctly and simply did not print the JSON, so no branch fired and the graph halted at `verify`.
+`RequestVerifier` runs **two model calls**. The first lets the agent reason freely with its tools. The second is `Agent.structured_output(Verdict, ...)`, which Bedrock implements as a forced tool call against a Pydantic schema, so the decision comes back typed instead of parsed from prose.
+
+That second call is not decoration. Measured on Nova with a single call, **1 run in 5 produced correct reasoning and then simply did not print the JSON**, so no edge condition matched and the request was wrongly rejected. With the structured pass, 0 in 6. The cost is one extra short model call per request.
+
+`Adjudicate` stays as the last line of defence and **fails closed**: no usable decision means rejected, `decided_by: fallback`, held for human review. Structured output should make that unreachable, and the graph must still be correct when it is not.
+
+Node naming: `JsonNode` is the base for anything returning a dict the graph serialises. Most subclasses are deterministic and never call a model. `RequestVerifier` is the exception and is the only node in the graph that does.
 
 `IntakeNormalizer` is a `DeterministicNode` that resolves the patient, loads the matching policy, computes the fact sheet and persists a DRAFT request. It makes no model call. `RequestVerifier` is an `Agent` that only reasons about the numbers it is handed, and has one tool, `request_history`. Conditional edges read the verdict JSON out of the verify node's output.
 
@@ -90,6 +96,16 @@ Two constraints already agreed for whenever that decision lands:
 
 - All matching arithmetic belongs in deterministic custom nodes (`strands.multiagent.base.MultiAgentBase` subclasses with no model call). Agents reason about numbers they are handed; they never compute them.
 - Fan-out must be genuine specialisation by function, not one agent per condition or per channel.
+
+## Deferred
+
+**Geographic matching.** `domain/matching.py` already has haversine distance and a proximity term in `score()`. Three gaps remain:
+
+1. **Geocoding.** Donors register with a city or address, not coordinates. Everything currently depends on `lat`/`lon` being populated by hand, and a donor without them silently scores zero on proximity rather than being flagged. Amazon Location Service `search_place_index_for_text` is the natural fit, and it is not SCP-blocked in ap-southeast-2.
+2. **Distance decay.** The proximity term floors at zero past roughly 100km, so a donor 150km away and one 400km away rank identically on distance. Needs a curve that keeps separating them, or a hard radius cut from the policy.
+3. **Travel time, not straight-line distance.** 40km across Chennai is not 40km of highway. Only worth doing if the demo leans on it.
+
+The Strands custom-tools doc uses a `weather_forecast(city, days)` tool as its example. That is a tool-shape reference, which `tools/history.py` already follows, not a geographic ranking example. Do not expect to lift logic from it.
 
 ## Conventions
 
@@ -162,6 +178,16 @@ sessions/...                                 owned by the session manager
 DynamoDB was the original design and was cut: the AWS account in use has a service control policy that denies DynamoDB, S3 `CreateBucket` and EventBridge `PutRule` outright. Bedrock and CloudWatch Logs work. Do not reintroduce DynamoDB without checking that policy.
 
 Tests use `moto` for the S3 path and `tmp_path` for the local path, so nothing needs credentials.
+
+## Deferred
+
+**Geographic matching.** `domain/matching.py` already has haversine distance and a proximity term in `score()`. Three gaps remain:
+
+1. **Geocoding.** Donors register with a city or address, not coordinates. Everything currently depends on `lat`/`lon` being populated by hand, and a donor without them silently scores zero on proximity rather than being flagged. Amazon Location Service `search_place_index_for_text` is the natural fit, and it is not SCP-blocked in ap-southeast-2.
+2. **Distance decay.** The proximity term floors at zero past roughly 100km, so a donor 150km away and one 400km away rank identically on distance. Needs a curve that keeps separating them, or a hard radius cut from the policy.
+3. **Travel time, not straight-line distance.** 40km across Chennai is not 40km of highway. Only worth doing if the demo leans on it.
+
+The Strands custom-tools doc uses a `weather_forecast(city, days)` tool as its example. That is a tool-shape reference, which `tools/history.py` already follows, not a geographic ranking example. Do not expect to lift logic from it.
 
 ## Conventions
 

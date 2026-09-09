@@ -1,15 +1,16 @@
 import os
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from donorpanel.domain import Condition, Patient, RequestStatus
 from donorpanel.graphs import request as flow
-from donorpanel.nodes.base import DeterministicNode
+from donorpanel.nodes.base import JsonNode
 from donorpanel.storage import FileStore, PanelRepository
 
 
-class StubVerifier(DeterministicNode):
+class StubVerifier(JsonNode):
     name = "verify"
 
     def __init__(self, verdict: str, reason: str = "stub"):
@@ -106,7 +107,7 @@ def test_live_verifier_rejects_an_unknown_patient(repo):
     assert out["path"][-1] == "close"
 
 
-class SilentVerifier(DeterministicNode):
+class SilentVerifier(JsonNode):
     name = "verify"
 
     def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:
@@ -181,3 +182,53 @@ def test_an_empty_pool_reports_a_shortfall(repo):
     assert out["cohort"]["cohort_size"] == 0
     assert out["cohort"]["shortfall"] == 2
     assert out["cohort"]["enough_to_proceed"] is False
+
+
+class ChattyAgent:
+    """Reasons in prose and never prints JSON, the exact Nova failure mode."""
+
+    def __init__(self, verdict="verified", reason="looks fine"):
+        self.verdict, self.reason = verdict, reason
+        self.prompts = []
+
+    def __call__(self, prompt, invocation_state=None, structured_output_model=None,
+                 structured_output_prompt=None, **kwargs):
+        self.prompts.append(prompt)
+        self.state_seen = invocation_state
+        return SimpleNamespace(
+            structured_output=structured_output_model(verdict=self.verdict,
+                                                      reason=self.reason),
+            __str__=lambda _: "I considered the fact sheet and reached a view.",
+        )
+
+
+def test_structured_output_rescues_a_verifier_that_writes_no_json(repo):
+    from donorpanel.nodes import RequestVerifier
+
+    chatty = ChattyAgent("verified", "interval respected")
+    out = flow.run({"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"},
+                   repo=repo, graph=flow.build(agent=RequestVerifier(agent=chatty)))
+
+    assert out["verdict"]["verdict"] == "verified"
+    assert out["verdict"]["decided_by"] == "verifier"
+    assert out["path"][-1] == "rank"
+    assert chatty.state_seen["request_id"] == out["request_id"]
+
+
+def test_the_reasoning_pass_sees_the_fact_sheet(repo):
+    from donorpanel.nodes import RequestVerifier
+
+    chatty = ChattyAgent()
+    flow.run({"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"},
+             repo=repo, graph=flow.build(agent=RequestVerifier(agent=chatty)))
+    assert "interval_days" in chatty.prompts[0]
+
+
+def test_a_structured_rejection_still_closes_the_request(repo):
+    from donorpanel.nodes import RequestVerifier
+
+    chatty = ChattyAgent("rejected", "duplicate of an open request")
+    out = flow.run({"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"},
+                   repo=repo, graph=flow.build(agent=RequestVerifier(agent=chatty)))
+    assert out["path"][-1] == "close"
+    assert repo.get_request(out["request_id"]).rejection_reason == "duplicate of an open request"

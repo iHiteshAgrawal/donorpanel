@@ -4,10 +4,10 @@ from typing import Any
 
 from .. import policies
 from ..domain import Component, Request, RequestSource, RequestStatus
-from .base import DeterministicNode
+from .base import JsonNode
 
 
-class IntakeNormalizer(DeterministicNode):
+class IntakeNormalizer(JsonNode):
     name = "intake"
 
     def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:
