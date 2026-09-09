@@ -52,6 +52,16 @@ def seed() -> None:
     print(f"seeded 1 patient and {len(pool)} donors")
 
 
+def request(patient_id: str, needed_by: str, units: int) -> None:
+    import json
+
+    from .graphs import intake
+
+    out = intake.run({"patient_id": patient_id, "needed_by": needed_by,
+                      "units_needed": units})
+    print(json.dumps(out, indent=2))
+
+
 async def ping(channel: str, recipient: str, body: str) -> None:
     active = registry()
     if channel not in active:
@@ -67,6 +77,11 @@ def main() -> None:
     sub.add_parser("init")
     sub.add_parser("seed")
 
+    req = sub.add_parser("request")
+    req.add_argument("--patient", required=True)
+    req.add_argument("--needed-by", required=True)
+    req.add_argument("--units", type=int, default=2)
+
     send = sub.add_parser("ping")
     send.add_argument("--channel", default="console")
     send.add_argument("--to", required=True)
@@ -79,5 +94,7 @@ def main() -> None:
         init()
     elif args.command == "seed":
         seed()
+    elif args.command == "request":
+        request(args.patient, args.needed_by, args.units)
     else:
         status()

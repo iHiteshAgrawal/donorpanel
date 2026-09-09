@@ -63,7 +63,20 @@ Every channel implements `Channel` in `src/donorpanel/channels/base.py` with `se
 
 The agent roster and orchestration are explicitly pending. The user wants to choose these together using the vocabulary from https://www.srajdev.com/p/understanding-agentic-ai-architecture (triggers, planning agent, agents with prompts and tools and environments, memory, guardrails, observability).
 
-`agents/`, `nodes/` and `tools/` are intentionally empty. Do not populate them speculatively.
+Phase 1 Intake is built. `graphs/intake.py` wires it:
+
+```
+intake ──▶ verify ──▶ adjudicate ──┬─ verified ─▶ accept   status VERIFIED
+                                   └─ rejected ─▶ close    status REJECTED
+```
+
+`Adjudicate` exists because a conditional edge must never depend on a model emitting exact JSON. It parses the verdict out of the verifier's prose, and when there is no usable decision it **fails closed**: rejected, `decided_by: fallback`, held for human review. This is not theoretical, it happened on the first live run. Nova reasoned correctly and simply did not print the JSON, so no branch fired and the graph halted at `verify`.
+
+`IntakeNormalizer` is a `DeterministicNode` that resolves the patient, loads the matching policy, computes the fact sheet and persists a DRAFT request. It makes no model call. `RequestVerifier` is an `Agent` that only reasons about the numbers it is handed, and has one tool, `request_history`. Conditional edges read the verdict JSON out of the verify node's output.
+
+`DeterministicNode` in `nodes/base.py` wraps deterministic work into `MultiAgentBase`, so the same subclass can stand in for an agent anywhere in a graph. Tests exploit that: a `StubVerifier` swaps into the verify slot to exercise both branches with no model call.
+
+Two things that will bite anyone extending this. A node receives its input as a **list of ContentBlock dicts**, not a string, so use `task_text()` rather than `str()`, otherwise the repr escapes newlines and JSON parsing fails. And a node's input carries **every upstream node's output concatenated**, so `find_block(text, key)` scans for balanced objects and returns the last one carrying that key rather than naively slicing brace to brace.
 
 Build order agreed with the user: state and memory first (done), then the five request phases left to right, then the scheduled graph, then safety and observability. The FastAPI platform edge is deliberately skipped for the demo.
 

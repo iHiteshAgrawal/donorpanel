@@ -1,18 +1,19 @@
-import os
-
 import boto3
 import pytest
 from moto import mock_aws
-
-os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
-os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
-os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
 
 BUCKET = "donorpanel-test"
 
 
 @pytest.fixture
-def store():
+def store(monkeypatch):
+    # Scoped to this fixture on purpose. Setting these at module import would
+    # override the real credentials file and break the live Bedrock tests.
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+
     with mock_aws():
         from donorpanel.storage import ObjectStore
 

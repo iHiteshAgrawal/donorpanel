@@ -52,6 +52,25 @@ class PanelRepository:
     def put_request(self, request: Request) -> None:
         request.updated_at = now()
         self.store.put(o.REQUEST.format(request_id=request.request_id), to_item(request))
+        self.store.touch(o.PATIENT_REQUEST.format(patient_id=request.patient_id,
+                                                  request_id=request.request_id))
+
+    def list_requests(self, patient_id: str) -> list[Request]:
+        prefix = o.PATIENT_REQUEST.format(patient_id=patient_id, request_id="")
+        ids = [key.rsplit("/", 1)[-1] for key in self.store.keys(prefix)]
+        found = [self.get_request(request_id) for request_id in ids]
+        requests = [r for r in found if r is not None]
+        return sorted(requests, key=lambda r: r.created_at, reverse=True)
+
+    # DRAFT is deliberately not "open". Intake persists a draft before the verifier
+    # runs, so counting drafts would make every abandoned request look like a
+    # duplicate of the next real one.
+    OPEN_STATUSES = (RequestStatus.VERIFIED, RequestStatus.MATCHING,
+                     RequestStatus.AWAITING_APPROVAL, RequestStatus.DISPATCHED)
+
+    def open_requests(self, patient_id: str, exclude: str | None = None) -> list[Request]:
+        return [r for r in self.list_requests(patient_id)
+                if r.status in self.OPEN_STATUSES and r.request_id != exclude]
 
     def get_request(self, request_id: str) -> Request | None:
         item = self.store.get(o.REQUEST.format(request_id=request_id))

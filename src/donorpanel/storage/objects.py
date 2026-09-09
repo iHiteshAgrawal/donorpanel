@@ -11,6 +11,7 @@ POOL = "pool/{region}/{blood_group}/{donor_id}"
 PATIENT = "patients/{patient_id}.json"
 CREDIT = "credits/{patient_id}.json"
 REQUEST = "requests/{request_id}.json"
+PATIENT_REQUEST = "patient-requests/{patient_id}/{request_id}"
 CONTACT = "contacts/{request_id}/{donor_id}.json"
 SESSION_PREFIX = "sessions/"
 

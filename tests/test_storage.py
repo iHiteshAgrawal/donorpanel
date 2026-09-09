@@ -96,3 +96,14 @@ def test_session_manager_persists_agent_state(store):
     reopened = S3SessionManager(session_id="s-live", bucket=store._bucket,
                                 prefix="sessions/", region_name="us-east-1")
     assert reopened.read_agent("s-live", "verifier").state["request_id"] == "r1"
+
+
+def test_drafts_do_not_count_as_open_requests(repo):
+    from donorpanel.domain import Request
+
+    repo.put_request(Request(request_id="r-draft", patient_id="p1",
+                             policy_id="thalassemia-india", units_needed=2,
+                             needed_by="2026-10-01"))
+    assert repo.open_requests("p1") == []
+    repo.set_status("r-draft", RequestStatus.VERIFIED)
+    assert [r.request_id for r in repo.open_requests("p1")] == ["r-draft"]
