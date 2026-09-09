@@ -88,11 +88,21 @@ Python 3.10 or newer, currently running 3.13.
 - `boto3` for AWS, `httpx` for Telegram, `pyyaml` for policies
 - `uv` for environment and dependency management
 
-Planned AWS services: Bedrock for reasoning, DynamoDB behind a custom `SessionRepository` for network state and checkpointing, EventBridge and Lambda for transfusion schedules and registry sweeps, Bedrock Knowledge Base for eligibility rules, Guardrails to block medical determinations, S3 with KMS for records, AgentCore Runtime for session isolation. Amazon Connect, Polly and Transcribe only once voice is added.
+## AWS account
 
-Note: Strands ships `FileSessionManager`, `S3SessionManager`, `SnapshotSessionManager` and `RepositorySessionManager`. There is no built-in DynamoDB session manager, so DynamoDB persistence means implementing a `SessionRepository` and passing it to `RepositorySessionManager`.
+Account 292368431051, region **ap-southeast-2 (Sydney)**. Two CLI profiles work: `default` (IAM user `donorpanel-dev`, static keys) and `donorpanel` (browser sign-in, 12 hour credentials, renew with `aws login --profile donorpanel`).
 
-`BEDROCK_MODEL_ID` is unset by default and the SDK default is used. Verify a real inference profile id with `aws bedrock list-inference-profiles` before pinning one.
+A service control policy from the org management account (042269275956) applies. It is **region scoped, not service scoped**. In `us-east-1` it denies DynamoDB, S3 `CreateBucket` and EventBridge `PutRule`. In `ap-southeast-2` none of that is denied. Do not move the region back without re-testing.
+
+The bucket `donorpanel-292368431051` exists in ap-southeast-2 and holds live seeded data.
+
+The AWS Agent Toolkit is installed. Its own commands (`aws configure agent-toolkit`, `aws agent-toolkit ...`) must stay on `us-east-1`, because that service runs nowhere else. Everything the project does runs in ap-southeast-2.
+
+## Bedrock
+
+Model ids are region scoped. In ap-southeast-2 the newer Anthropic models use the `au.` prefix, older ones use `apac.`.
+
+Anthropic models are currently blocked account wide with `ResourceNotFoundException: Model use case details have not been submitted`, for both `Converse` and `ConverseStream`. The account had a brief grace window that has closed. Until the use case form is approved, use `apac.amazon.nova-pro-v1:0`, which works through the full agent loop. Switching back is one line in `.env`.
 
 ## Layout
 

@@ -8,7 +8,7 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Config:
-    aws_region: str = field(default_factory=lambda: os.getenv("AWS_REGION", "us-east-1"))
+    aws_region: str = field(default_factory=lambda: os.getenv("AWS_REGION", "ap-southeast-2"))
     bedrock_model_id: str | None = field(default_factory=lambda: os.getenv("BEDROCK_MODEL_ID") or None)
     telegram_bot_token: str | None = field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN") or None)
     telegram_allowed_chat_ids: tuple[str, ...] = field(

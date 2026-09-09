@@ -31,7 +31,10 @@ def ensure_bucket() -> None:
     # us-east-1 is the one region that rejects an explicit LocationConstraint.
     if config.aws_region != "us-east-1":
         kwargs["CreateBucketConfiguration"] = {"LocationConstraint": config.aws_region}
-    s3.create_bucket(**kwargs)
+    try:
+        s3.create_bucket(**kwargs)
+    except s3.exceptions.BucketAlreadyOwnedByYou:
+        pass
 
 
 class ObjectStore:
