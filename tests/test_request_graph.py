@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 
 from donorpanel.domain import Condition, Patient, RequestStatus
-from donorpanel.graphs import intake
+from donorpanel.graphs import request as flow
 from donorpanel.nodes.base import DeterministicNode
 from donorpanel.storage import FileStore, PanelRepository
 
@@ -34,17 +34,18 @@ def repo(tmp_path):
 
 def ask(repo, verdict, reason="stub", **overrides):
     stub = StubVerifier(verdict, reason)
-    graph = intake.build(agent=stub)
+    graph = flow.build(agent=stub)
     raw = {"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"}
     raw.update(overrides)
-    return intake.run(raw, repo=repo, graph=graph), stub
+    return flow.run(raw, repo=repo, graph=graph), stub
 
 
 def test_verified_request_takes_the_accept_branch(repo):
     out, _ = ask(repo, "verified", "matches the 21 day interval")
-    assert out["path"] == ["intake", "verify", "adjudicate", "accept"]
+    assert out["path"] == ["intake", "verify", "adjudicate", "accept",
+                           "eligibility", "rank"]
     assert out["verdict"]["verdict"] == "verified"
-    assert repo.get_request(out["request_id"]).status == RequestStatus.VERIFIED
+    assert repo.get_request(out["request_id"]).status == RequestStatus.MATCHING
 
 
 def test_rejected_request_takes_the_close_branch(repo):
@@ -58,6 +59,12 @@ def test_rejected_request_takes_the_close_branch(repo):
 def test_only_one_branch_ever_runs(repo):
     out, _ = ask(repo, "verified")
     assert "close" not in out["path"]
+
+
+def test_rejected_requests_never_reach_matching(repo):
+    out, _ = ask(repo, "rejected")
+    assert "eligibility" not in out["path"]
+    assert "rank" not in out["path"]
 
 
 def test_fact_sheet_reaches_the_verifier(repo):
@@ -75,8 +82,8 @@ def test_unknown_patient_is_flagged_before_the_model_sees_it(repo):
 
 def test_intake_persists_the_request_as_draft_before_verification(repo):
     stub = StubVerifier("verified")
-    graph = intake.build(agent=stub)
-    out = intake.run({"patient_id": "p-ravi", "units_needed": 2,
+    graph = flow.build(agent=stub)
+    out = flow.run({"patient_id": "p-ravi", "units_needed": 2,
                       "needed_by": "2026-10-01"}, repo=repo, graph=graph,
                      request_id="r-fixed")
     assert out["request_id"] == "r-fixed"
@@ -93,7 +100,7 @@ def test_open_requests_are_surfaced_to_the_verifier(repo):
 @pytest.mark.skipif(not os.getenv("DONORPANEL_LIVE"),
                     reason="set DONORPANEL_LIVE=1 to call Bedrock")
 def test_live_verifier_rejects_an_unknown_patient(repo):
-    out = intake.run({"patient_id": "p-nobody", "units_needed": 2,
+    out = flow.run({"patient_id": "p-nobody", "units_needed": 2,
                       "needed_by": "2026-10-01"}, repo=repo)
     assert out["verdict"]["verdict"] == "rejected"
     assert out["path"][-1] == "close"
@@ -107,8 +114,8 @@ class SilentVerifier(DeterministicNode):
 
 
 def test_a_verifier_that_returns_no_verdict_fails_closed(repo):
-    graph = intake.build(agent=SilentVerifier())
-    out = intake.run({"patient_id": "p-ravi", "units_needed": 2,
+    graph = flow.build(agent=SilentVerifier())
+    out = flow.run({"patient_id": "p-ravi", "units_needed": 2,
                       "needed_by": "2026-10-01"}, repo=repo, graph=graph)
     assert out["path"] == ["intake", "verify", "adjudicate", "close"]
     assert out["verdict"]["decided_by"] == "fallback"
@@ -121,3 +128,56 @@ def test_cadence_gap_is_measured_between_needed_by_dates(repo):
     ask(repo, "verified", needed_by="2026-10-01")
     _, stub = ask(repo, "verified", needed_by="2026-10-22")
     assert '"days_since_previous_needed_by": 21' in stub.seen[0]
+
+
+def pool_of(repo, rows):
+    from donorpanel.domain import Donor
+
+    for donor_id, group, consent, last, lat, lon in rows:
+        repo.put_donor(Donor(donor_id=donor_id, name=donor_id, blood_group=group,
+                             region="IN-TN", channel="telegram", address="x",
+                             consent=consent, last_donation=last, lat=lat, lon=lon))
+
+
+def test_incompatible_groups_never_enter_the_pool(repo):
+    pool_of(repo, [("d-b", "B+", True, None, None, None),
+                   ("d-a", "A+", True, None, None, None),
+                   ("d-o", "O-", True, None, None, None)])
+    out, _ = ask(repo, "verified")
+    assert out["eligibility"]["pool_size"] == 2
+    assert set(out["eligibility"]["eligible"]) == {"d-b", "d-o"}
+
+
+def test_ineligible_donors_are_excluded_with_a_reason(repo):
+    from datetime import datetime, timedelta, timezone
+
+    recent = (datetime.now(timezone.utc).date() - timedelta(days=10)).isoformat()
+    pool_of(repo, [("d-ok", "B+", True, None, None, None),
+                   ("d-noconsent", "B+", False, None, None, None),
+                   ("d-recent", "B+", True, recent, None, None)])
+    out, _ = ask(repo, "verified")
+    reasons = {x["donor_id"]: x["reason"] for x in out["eligibility"]["excluded"]}
+    assert reasons["d-noconsent"] == "no consent on file"
+    assert "needs 90" in reasons["d-recent"]
+    assert out["eligibility"]["eligible"] == ["d-ok"]
+
+
+def test_ranking_persists_contacts_in_rank_order(repo):
+    pool_of(repo, [("d-far", "B+", True, None, 13.08, 80.27),
+                   ("d-near", "B+", True, None, 11.02, 76.96)])
+    repo.put_patient(Patient(patient_id="p-ravi", name="Ravi",
+                             condition=Condition.THALASSEMIA, blood_group="B+",
+                             policy_id="thalassemia-india", region="IN-TN",
+                             lat=11.0168, lon=76.9558))
+    out, _ = ask(repo, "verified")
+    contacts = repo.list_contacts(out["request_id"])
+    assert [c.donor_id for c in contacts] == ["d-near", "d-far"]
+    assert [c.rank for c in contacts] == [1, 2]
+    assert all(c.status.value == "pending" for c in contacts)
+
+
+def test_an_empty_pool_reports_a_shortfall(repo):
+    out, _ = ask(repo, "verified")
+    assert out["cohort"]["cohort_size"] == 0
+    assert out["cohort"]["shortfall"] == 2
+    assert out["cohort"]["enough_to_proceed"] is False

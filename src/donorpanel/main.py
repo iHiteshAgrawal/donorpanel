@@ -25,9 +25,27 @@ def init() -> None:
         print(f"local storage at {config.local_root}, set DONORPANEL_BUCKET to use S3")
 
 
+def reset() -> None:
+    from .storage import store
+
+    backing = store()
+    removed = 0
+    for prefix in ("requests/", "contacts/", "patient-requests/",
+                   "donors/", "pool/", "patients/", "credits/"):
+        for key in backing.keys(prefix):
+            backing.delete(key)
+            removed += 1
+    print(f"cleared {removed} objects")
+
+
 def seed() -> None:
+    from datetime import datetime, timedelta, timezone
+
     from .domain import Condition, Donor, Patient
     from .storage import PanelRepository
+
+    def ago(days: int) -> str:
+        return (datetime.now(timezone.utc).date() - timedelta(days=days)).isoformat()
 
     init()
     repo = PanelRepository()
@@ -35,19 +53,23 @@ def seed() -> None:
         patient_id="p-ravi", name="Ravi", condition=Condition.THALASSEMIA,
         blood_group="B+", policy_id="thalassemia-india", region="IN-TN",
         city="Coimbatore", hospital="Government Hospital",
+        lat=11.0168, lon=76.9558,
     ))
     pool = [
-        ("d-asha", "Asha", "B+", "telegram", True, "2026-04-02"),
-        ("d-vikram", "Vikram", "B+", "email", True, "2026-08-30"),
-        ("d-meera", "Meera", "B+", "telegram", True, None),
-        ("d-suresh", "Suresh", "B+", "telegram", False, "2026-01-15"),
-        ("d-priya", "Priya", "O-", "email", True, "2026-03-11"),
+        ("d-asha", "Asha", "B+", "telegram", "ta", True, ago(160), 11.02, 76.96, 0),
+        ("d-vikram", "Vikram", "B+", "email", "ta", True, ago(20), 11.05, 76.99, 0),
+        ("d-meera", "Meera", "O-", "telegram", "ta", True, None, 11.01, 76.94, 0),
+        ("d-suresh", "Suresh", "B+", "telegram", "ta", False, ago(400), 11.03, 76.97, 0),
+        ("d-kavya", "Kavya", "O+", "telegram", "ta", True, ago(210), 11.30, 77.40, 3),
+        ("d-arun", "Arun", "B-", "email", "ta", True, ago(120), 13.08, 80.27, 0),
+        ("d-divya", "Divya", "A+", "telegram", "ta", True, ago(300), 11.00, 76.95, 0),
     ]
-    for donor_id, name, group, channel, consent, last in pool:
+    for donor_id, name, group, channel, lang, consent, last, lat, lon, contacts in pool:
         repo.put_donor(Donor(
             donor_id=donor_id, name=name, blood_group=group, region="IN-TN",
             channel=channel, address=f"{donor_id}@example.test", city="Coimbatore",
-            consent=consent, last_donation=last, language="ta",
+            consent=consent, last_donation=last, language=lang, lat=lat, lon=lon,
+            contacts_this_month=contacts,
         ))
     print(f"seeded 1 patient and {len(pool)} donors")
 
@@ -55,9 +77,9 @@ def seed() -> None:
 def request(patient_id: str, needed_by: str, units: int) -> None:
     import json
 
-    from .graphs import intake
+    from .graphs import request as flow
 
-    out = intake.run({"patient_id": patient_id, "needed_by": needed_by,
+    out = flow.run({"patient_id": patient_id, "needed_by": needed_by,
                       "units_needed": units})
     print(json.dumps(out, indent=2))
 
@@ -76,6 +98,7 @@ def main() -> None:
     sub.add_parser("status")
     sub.add_parser("init")
     sub.add_parser("seed")
+    sub.add_parser("reset")
 
     req = sub.add_parser("request")
     req.add_argument("--patient", required=True)
@@ -94,6 +117,8 @@ def main() -> None:
         init()
     elif args.command == "seed":
         seed()
+    elif args.command == "reset":
+        reset()
     elif args.command == "request":
         request(args.patient, args.needed_by, args.units)
     else:

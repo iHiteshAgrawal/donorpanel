@@ -66,9 +66,15 @@ The agent roster and orchestration are explicitly pending. The user wants to cho
 Phase 1 Intake is built. `graphs/intake.py` wires it:
 
 ```
-intake ──▶ verify ──▶ adjudicate ──┬─ verified ─▶ accept   status VERIFIED
+intake ──▶ verify ──▶ adjudicate ──┬─ verified ─▶ accept ──▶ eligibility ──▶ rank
                                    └─ rejected ─▶ close    status REJECTED
 ```
+
+Phase 2 Match is built and is **entirely deterministic**. Blood matching is rules and arithmetic, so no model call belongs in it. `EligibilityResolver` expands the recipient's blood group through the red cell compatibility table, pulls each compatible pool, and filters on the policy's `donor_eligibility` plus consent, reachability and antigen requirements, emitting every exclusion with its reason. `CohortRanker` scores the survivors on rest since last donation, contact fatigue, repeat-donor preference and haversine proximity, writes ranked `Contact` rows, and moves the request to MATCHING.
+
+`domain/matching.py` holds the compatibility table, distance, eligibility rules and scoring as pure functions, so they are testable without any graph or storage.
+
+`CohortRanker` reads the eligible list out of the upstream node's output rather than `invocation_state`, because relying on that dict being shared by reference across nodes is not something the Python SDK documents.
 
 `Adjudicate` exists because a conditional edge must never depend on a model emitting exact JSON. It parses the verdict out of the verifier's prose, and when there is no usable decision it **fails closed**: rejected, `decided_by: fallback`, held for human review. This is not theoretical, it happened on the first live run. Nova reasoned correctly and simply did not print the JSON, so no branch fired and the graph halted at `verify`.
 
@@ -217,6 +223,8 @@ Message ids are zero padded because the sort key is lexical. Without padding, me
 
 Floats are rejected by DynamoDB, so `table.encode` converts them to `Decimal` on the way in and `table.decode` converts back on the way out.
 
+Domain dataclasses coerce their enum fields in `__post_init__`. Without it, anything read back from storage carries raw strings, and because these are `str` enums every comparison still passes, so the inconsistency stays invisible until something touches `.value`.
+
 Tests run against `moto`, so no AWS account or Docker is needed. Set `DYNAMODB_ENDPOINT` to point at DynamoDB Local instead.
 
 ## Commands
@@ -225,6 +233,7 @@ Tests run against `moto`, so no AWS account or Docker is needed. Set `DYNAMODB_E
 uv venv && uv pip install -e ".[dev]"
 .venv/bin/donorpanel status
 .venv/bin/donorpanel init
+.venv/bin/donorpanel reset
 .venv/bin/donorpanel seed
 .venv/bin/donorpanel ping --to demo --body "Channel check."
 .venv/bin/python -m pytest tests -q

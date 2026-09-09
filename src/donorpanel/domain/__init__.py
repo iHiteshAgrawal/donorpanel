@@ -1,3 +1,10 @@
+from .matching import (
+    COMPATIBLE_DONORS,
+    compatible_groups,
+    distance_km,
+    ineligible_reason,
+    score,
+)
 from .models import (
     Component,
     Condition,
@@ -15,6 +22,7 @@ from .models import (
 )
 
 __all__ = [
+    "COMPATIBLE_DONORS",
     "Component",
     "Condition",
     "Contact",
@@ -25,7 +33,11 @@ __all__ = [
     "Request",
     "RequestSource",
     "RequestStatus",
+    "compatible_groups",
     "days_since",
+    "distance_km",
+    "ineligible_reason",
     "now",
+    "score",
     "to_item",
 ]

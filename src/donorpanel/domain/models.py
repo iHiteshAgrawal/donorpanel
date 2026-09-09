@@ -78,8 +78,13 @@ class Patient:
     antigens_required: list[str] = field(default_factory=list)
     city: str | None = None
     hospital: str | None = None
+    lat: float | None = None
+    lon: float | None = None
     coordinator_channel: str | None = None
     coordinator_address: str | None = None
+
+    def __post_init__(self) -> None:
+        self.condition = Condition(self.condition)
 
 
 @dataclass
@@ -97,6 +102,11 @@ class Request:
     created_at: str = field(default_factory=now)
     updated_at: str = field(default_factory=now)
 
+    def __post_init__(self) -> None:
+        self.component = Component(self.component)
+        self.source = RequestSource(self.source)
+        self.status = RequestStatus(self.status)
+
 
 @dataclass
 class Contact:
@@ -108,6 +118,9 @@ class Contact:
     contacted_at: str | None = None
     responded_at: str | None = None
     note: str | None = None
+
+    def __post_init__(self) -> None:
+        self.status = ContactStatus(self.status)
 
 
 @dataclass
@@ -121,6 +134,9 @@ class Credit:
         return max(0, self.units_owed - self.units_repaid)
 
 
+# Storage writes enums as their string values, so every read path would otherwise
+# hand back raw strings. These are str enums, so comparisons still pass and the
+# inconsistency stays invisible until something touches .value.
 def to_item(obj: Any) -> dict[str, Any]:
     return {k: (v.value if isinstance(v, Enum) else v)
             for k, v in asdict(obj).items() if v is not None}

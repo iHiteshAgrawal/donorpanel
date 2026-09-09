@@ -5,7 +5,14 @@ from typing import Any
 from strands.multiagent import GraphBuilder
 
 from ..agents import verifier
-from ..nodes import Adjudicate, CloseRejected, IntakeNormalizer, MarkVerified
+from ..nodes import (
+    Adjudicate,
+    CloseRejected,
+    CohortRanker,
+    EligibilityResolver,
+    IntakeNormalizer,
+    MarkVerified,
+)
 from ..nodes.base import find_block, node_text
 from ..storage import PanelRepository
 
@@ -29,11 +36,15 @@ def build(agent=None, session_manager=None):
     builder.add_node(Adjudicate(), "adjudicate")
     builder.add_node(MarkVerified(), "accept")
     builder.add_node(CloseRejected(), "close")
+    builder.add_node(EligibilityResolver(), "eligibility")
+    builder.add_node(CohortRanker(), "rank")
 
     builder.add_edge("intake", "verify")
     builder.add_edge("verify", "adjudicate")
     builder.add_edge("adjudicate", "accept", condition=is_verified)
     builder.add_edge("adjudicate", "close", condition=is_rejected)
+    builder.add_edge("accept", "eligibility")
+    builder.add_edge("eligibility", "rank")
 
     builder.set_entry_point("intake")
     builder.set_max_node_executions(12)
@@ -54,11 +65,13 @@ def run(raw: dict[str, Any], repo: PanelRepository | None = None, graph=None,
         json.dumps(raw),
         invocation_state={"repo": repo, "request_id": request_id, "raw": raw},
     )
-    outcome = find_block(str(result), "status")
+    text = str(result)
     return {
         "request_id": request_id,
         "graph_status": result.status.value,
         "path": [node.node_id for node in result.execution_order],
-        "verdict": find_block(str(result), "verdict"),
-        "outcome": outcome,
+        "verdict": find_block(text, "verdict"),
+        "outcome": find_block(text, "status"),
+        "eligibility": find_block(text, "eligible_count"),
+        "cohort": find_block(text, "cohort_size"),
     }
