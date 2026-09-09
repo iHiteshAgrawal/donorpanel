@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from ..domain import (
     Contact,
     ContactStatus,
@@ -20,8 +22,11 @@ class PanelRepository:
 
             store = default_store()
         self.store = store
+        self._donors: dict[str, Donor | None] = {}
+        self._patients: dict[str, Patient | None] = {}
 
     def put_donor(self, donor: Donor) -> None:
+        self._donors.pop(donor.donor_id, None)
         previous = self.get_donor(donor.donor_id)
         if previous and (previous.region, previous.blood_group) != (donor.region, donor.blood_group):
             self.store.delete(o.POOL.format(region=previous.region,
@@ -31,23 +36,38 @@ class PanelRepository:
         self.store.touch(o.POOL.format(region=donor.region,
                                        blood_group=donor.blood_group,
                                        donor_id=donor.donor_id))
+        self._donors[donor.donor_id] = donor
 
     def get_donor(self, donor_id: str) -> Donor | None:
-        item = self.store.get(o.DONOR.format(donor_id=donor_id))
-        return Donor(**item) if item else None
+        if donor_id not in self._donors:
+            item = self.store.get(o.DONOR.format(donor_id=donor_id))
+            self._donors[donor_id] = Donor(**item) if item else None
+        return self._donors[donor_id]
+
+    def get_donors(self, donor_ids: list[str]) -> list[Donor]:
+        # Sydney round trips are ~200ms each, so fetching a pool one at a time
+        # costs seconds. The repository is per request, so the cache is safe.
+        missing = [d for d in donor_ids if d not in self._donors]
+        if missing:
+            with ThreadPoolExecutor(max_workers=12) as pool:
+                for donor_id, donor in zip(missing, pool.map(self.get_donor, missing)):
+                    self._donors[donor_id] = donor
+        return [d for d in (self._donors.get(i) for i in donor_ids) if d is not None]
 
     def list_pool(self, region: str, blood_group: str) -> list[Donor]:
         prefix = o.POOL.format(region=region, blood_group=blood_group, donor_id="")
         ids = [key.rsplit("/", 1)[-1] for key in self.store.keys(prefix)]
-        found = [self.get_donor(donor_id) for donor_id in ids]
-        return [d for d in found if d is not None]
+        return self.get_donors(ids)
 
     def put_patient(self, patient: Patient) -> None:
         self.store.put(o.PATIENT.format(patient_id=patient.patient_id), to_item(patient))
+        self._patients[patient.patient_id] = patient
 
     def get_patient(self, patient_id: str) -> Patient | None:
-        item = self.store.get(o.PATIENT.format(patient_id=patient_id))
-        return Patient(**item) if item else None
+        if patient_id not in self._patients:
+            item = self.store.get(o.PATIENT.format(patient_id=patient_id))
+            self._patients[patient_id] = Patient(**item) if item else None
+        return self._patients[patient_id]
 
     def put_request(self, request: Request) -> None:
         request.updated_at = now()
@@ -88,9 +108,17 @@ class PanelRepository:
         self.store.put(o.CONTACT.format(request_id=contact.request_id,
                                         donor_id=contact.donor_id), to_item(contact))
 
+    def put_contacts(self, contacts: list[Contact]) -> None:
+        if not contacts:
+            return
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            list(pool.map(self.put_contact, contacts))
+
     def list_contacts(self, request_id: str) -> list[Contact]:
         prefix = o.CONTACT.format(request_id=request_id, donor_id="").rsplit("/", 1)[0] + "/"
-        found = [self.store.get(key) for key in self.store.keys(prefix)]
+        keys = self.store.keys(prefix)
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            found = list(pool.map(self.store.get, keys)) if keys else []
         contacts = [Contact(**item) for item in found if item]
         return sorted(contacts, key=lambda c: c.rank)
 

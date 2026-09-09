@@ -1,0 +1,60 @@
+@import 'tailwindcss';
+@import '@xyflow/react/dist/style.css';
+@import 'leaflet/dist/leaflet.css';
+
+@theme {
+  --color-ink-950: #080b12;
+  --color-ink-900: #0d111a;
+  --color-ink-850: #121826;
+  --color-ink-800: #18202f;
+  --color-ink-700: #232d40;
+  --color-ink-600: #33415a;
+  --color-ink-400: #64748b;
+  --color-ink-300: #94a3b8;
+  --color-ink-200: #cbd5e1;
+
+  --color-agent: #a78bfa;
+  --color-agent-dim: #2e2545;
+  --color-logic: #60a5fa;
+  --color-logic-dim: #16283f;
+  --color-gate: #fb7185;
+  --color-gate-dim: #3b1f28;
+  --color-good: #34d399;
+  --color-warn: #fbbf24;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+* { -webkit-font-smoothing: antialiased; }
+
+html, body, #root { height: 100%; }
+
+body {
+  background: var(--color-ink-950);
+  color: var(--color-ink-200);
+  font-family: var(--font-sans);
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-ink-700); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-ink-600); }
+
+.react-flow__attribution { display: none; }
+.leaflet-container { background: var(--color-ink-900); font-family: var(--font-sans); }
+.leaflet-control-attribution { font-size: 9px; opacity: .4; }
+
+/* OpenStreetMap has no dark raster tileset and the hosted dark themes now need
+   an API key, so the light tiles are inverted to match the interface. */
+.leaflet-tile-pane { filter: invert(1) hue-rotate(185deg) brightness(.78) contrast(.95) saturate(.55); }
+
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgb(167 139 250 / .45); }
+  70%  { box-shadow: 0 0 0 12px rgb(167 139 250 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(167 139 250 / 0); }
+}
+.running { animation: pulse-ring 1.4s cubic-bezier(.4,0,.6,1) infinite; }
+
+@keyframes dash { to { stroke-dashoffset: -16; } }
+.flowing path { stroke-dasharray: 6 6; animation: dash .6s linear infinite; }

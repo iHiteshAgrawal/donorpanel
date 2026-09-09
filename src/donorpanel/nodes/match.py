@@ -72,18 +72,18 @@ class CohortRanker(JsonNode):
         # Read the upstream node's output rather than invocation_state, so this does
         # not depend on whether Strands shares that dict by reference across nodes.
         eligible = find_block(task_text(task), "eligible").get("eligible", [])
-        donors = [repo.get_donor(d) for d in eligible]
+        donors = repo.get_donors(eligible)
         scored = []
-        for donor in [d for d in donors if d is not None]:
+        for donor in donors:
             total, parts = score(donor, rules, patient.lat, patient.lon, prefer_repeat)
             scored.append((total, parts, donor))
         scored.sort(key=lambda row: row[0], reverse=True)
 
-        cohort = []
+        cohort, rows = [], []
         for rank, (total, parts, donor) in enumerate(scored[:size], start=1):
-            repo.put_contact(Contact(request_id=request.request_id, donor_id=donor.donor_id,
-                                     status=ContactStatus.PENDING, channel=donor.channel,
-                                     rank=rank))
+            rows.append(Contact(request_id=request.request_id, donor_id=donor.donor_id,
+                                status=ContactStatus.PENDING, channel=donor.channel,
+                                rank=rank))
             cohort.append({
                 "rank": rank, "donor_id": donor.donor_id, "name": donor.name,
                 "blood_group": donor.blood_group, "channel": donor.channel,
@@ -91,6 +91,7 @@ class CohortRanker(JsonNode):
                 "km": distance_km(patient.lat, patient.lon, donor.lat, donor.lon),
             })
 
+        repo.put_contacts(rows)
         repo.set_status(request.request_id, RequestStatus.MATCHING)
         shortfall = max(0, request.units_needed - len(cohort))
         return {

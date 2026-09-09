@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from typing import Any
@@ -25,7 +26,10 @@ class JsonNode(MultiAgentBase):
         started = time.time()
         state = invocation_state or {}
         try:
-            payload = self.run(task, state)
+            # run() is synchronous and does blocking boto3 and model I/O. Calling it
+            # directly freezes the event loop for the whole node, which stalls SSE
+            # flushes so the UI receives node_start and node_stop at the same instant.
+            payload = await asyncio.to_thread(self.run, task, state)
             status = Status.COMPLETED
             text = json.dumps(payload, indent=2, default=str)
         # Broad on purpose: a node failure must surface as a FAILED NodeResult the

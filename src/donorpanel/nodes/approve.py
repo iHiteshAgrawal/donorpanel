@@ -60,7 +60,13 @@ class OutreachComposer(JsonNode):
             structured_output_model=Drafts,
             structured_output_prompt="Produce one draft per language and channel group.",
         )
-        drafts = [d.model_dump() for d in result.structured_output.drafts]
+        drafts = []
+        for draft in result.structured_output.drafts:
+            row = draft.model_dump()
+            # Models asked for a null subject sometimes return the literal string.
+            if str(row.get("subject") or "").strip().lower() in ("null", "none", ""):
+                row["subject"] = None
+            drafts.append(row)
         repo.put_drafts(request.request_id, drafts)
         return {"request_id": request.request_id, "brief": brief,
                 "draft_count": len(drafts), "drafts": drafts}
