@@ -33,9 +33,24 @@ def repo(tmp_path):
     return repo
 
 
-def ask(repo, verdict, reason="stub", **overrides):
+class StubComposer:
+    def __init__(self, drafts=None):
+        self.drafts = drafts or [{"language": "ta", "channel": "telegram",
+                                  "subject": None, "body": "Hello {name}"}]
+        self.briefs = []
+
+    def __call__(self, prompt, invocation_state=None, structured_output_model=None,
+                 structured_output_prompt=None, **kwargs):
+        self.briefs.append(prompt)
+        return SimpleNamespace(
+            structured_output=structured_output_model(drafts=self.drafts),
+            __str__=lambda _: "drafted",
+        )
+
+
+def ask(repo, verdict, reason="stub", composer=None, **overrides):
     stub = StubVerifier(verdict, reason)
-    graph = flow.build(agent=stub)
+    graph = flow.build(agent=stub, composer_agent=composer or StubComposer())
     raw = {"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"}
     raw.update(overrides)
     return flow.run(raw, repo=repo, graph=graph), stub
@@ -232,3 +247,74 @@ def test_a_structured_rejection_still_closes_the_request(repo):
                    repo=repo, graph=flow.build(agent=RequestVerifier(agent=chatty)))
     assert out["path"][-1] == "close"
     assert repo.get_request(out["request_id"]).rejection_reason == "duplicate of an open request"
+
+
+def with_pool(repo):
+    pool_of(repo, [("d-one", "B+", True, None, 11.02, 76.96),
+                   ("d-two", "O-", True, None, 11.09, 77.36)])
+    repo.put_patient(Patient(patient_id="p-ravi", name="Ravi Kumar",
+                             condition=Condition.THALASSEMIA, blood_group="B+",
+                             policy_id="thalassemia-india", region="IN-TN",
+                             city="Coimbatore", hospital="Government Hospital",
+                             lat=11.0168, lon=76.9558))
+
+
+def test_an_empty_cohort_never_reaches_the_composer(repo):
+    out, _ = ask(repo, "verified")
+    assert out["path"][-1] == "rank"
+    assert "compose" not in out["path"]
+    assert "gate" not in out["path"]
+
+
+def test_a_real_cohort_is_composed_and_gated(repo):
+    with_pool(repo)
+    out, _ = ask(repo, "verified")
+    assert out["path"][-2:] == ["compose", "gate"]
+    assert out["gate"]["gate"] == "pending"
+    assert repo.get_request(out["request_id"]).status == RequestStatus.AWAITING_APPROVAL
+
+
+def test_nothing_is_sent_before_a_human_approves(repo):
+    with_pool(repo)
+    out, _ = ask(repo, "verified")
+    assert out["gate"]["waiting_on"] == "coordinator approval"
+    assert [c["donor_id"] for c in out["gate"]["would_contact"]] == ["d-one", "d-two"]
+
+
+def test_the_gate_opens_once_approval_is_recorded(repo):
+    with_pool(repo)
+    first, _ = ask(repo, "verified")
+    repo.approve(first["request_id"], by="coordinator-anita")
+
+    graph = flow.build(agent=StubVerifier("verified"), composer_agent=StubComposer())
+    second = flow.run({"patient_id": "p-ravi", "units_needed": 2,
+                       "needed_by": "2026-10-01"}, repo=repo, graph=graph,
+                      request_id=first["request_id"])
+    assert second["gate"]["gate"] == "approved"
+    assert second["gate"]["by"] == "coordinator-anita"
+
+
+def test_the_brief_carries_no_patient_detail_beyond_a_first_name(repo):
+    with_pool(repo)
+    composer = StubComposer()
+    ask(repo, "verified", composer=composer)
+    brief = composer.briefs[0]
+    assert '"patient_first_name": "Ravi"' in brief
+    assert "Kumar" not in brief
+    assert "thalassemia" not in brief.lower()
+
+
+def test_donors_are_grouped_by_language_and_channel(repo):
+    with_pool(repo)
+    composer = StubComposer()
+    out, _ = ask(repo, "verified", composer=composer)
+    groups = out["drafts"]["brief"]["groups"]
+    assert groups == [{"language": "en", "channel": "telegram", "donors": 2}]
+
+
+def test_drafts_are_persisted_for_the_coordinator(repo):
+    with_pool(repo)
+    out, _ = ask(repo, "verified")
+    stored = repo.get_drafts(out["request_id"])
+    assert stored[0]["body"] == "Hello {name}"
+    assert [r.request_id for r in repo.awaiting_approval()] == [out["request_id"]]

@@ -13,6 +13,8 @@ CREDIT = "credits/{patient_id}.json"
 REQUEST = "requests/{request_id}.json"
 PATIENT_REQUEST = "patient-requests/{patient_id}/{request_id}"
 CONTACT = "contacts/{request_id}/{donor_id}.json"
+DRAFTS = "drafts/{request_id}.json"
+APPROVAL = "approvals/{request_id}.json"
 SESSION_PREFIX = "sessions/"
 
 

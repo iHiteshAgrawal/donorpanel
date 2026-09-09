@@ -98,6 +98,28 @@ class PanelRepository:
         return sum(1 for c in self.list_contacts(request_id)
                    if c.status in (ContactStatus.PLEDGED, ContactStatus.DONATED))
 
+    def put_drafts(self, request_id: str, drafts: list[dict]) -> None:
+        self.store.put(o.DRAFTS.format(request_id=request_id), {"drafts": drafts})
+
+    def get_drafts(self, request_id: str) -> list[dict]:
+        found = self.store.get(o.DRAFTS.format(request_id=request_id))
+        return (found or {}).get("drafts", [])
+
+    def approve(self, request_id: str, by: str, note: str | None = None) -> None:
+        self.store.put(o.APPROVAL.format(request_id=request_id),
+                       {"request_id": request_id, "approved": True, "by": by,
+                        "note": note, "at": now()})
+
+    def get_approval(self, request_id: str) -> dict | None:
+        return self.store.get(o.APPROVAL.format(request_id=request_id))
+
+    def awaiting_approval(self) -> list[Request]:
+        ids = [k.rsplit("/", 1)[-1].removesuffix(".json")
+               for k in self.store.keys("requests/")]
+        found = [self.get_request(i) for i in ids]
+        return [r for r in found
+                if r is not None and r.status == RequestStatus.AWAITING_APPROVAL]
+
     def get_credit(self, patient_id: str) -> Credit:
         item = self.store.get(o.CREDIT.format(patient_id=patient_id))
         return Credit(**item) if item else Credit(patient_id=patient_id)

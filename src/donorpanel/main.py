@@ -30,8 +30,8 @@ def reset() -> None:
 
     backing = store()
     removed = 0
-    for prefix in ("requests/", "contacts/", "patient-requests/",
-                   "donors/", "pool/", "patients/", "credits/"):
+    for prefix in ("requests/", "contacts/", "patient-requests/", "drafts/",
+                   "approvals/", "donors/", "pool/", "patients/", "credits/"):
         for key in backing.keys(prefix):
             backing.delete(key)
             removed += 1
@@ -99,6 +99,40 @@ def request(patient_id: str, needed_by: str, units: int) -> None:
     print(json.dumps(out, indent=2))
 
 
+def approve(request_id: str, by: str, note: str | None) -> None:
+    from .storage import PanelRepository
+
+    repo = PanelRepository()
+    if repo.get_request(request_id) is None:
+        raise SystemExit(f"no request {request_id}")
+    repo.approve(request_id, by=by, note=note)
+    print(f"{request_id} approved by {by}")
+
+
+def pending() -> None:
+    from .storage import PanelRepository
+
+    repo = PanelRepository()
+    waiting = repo.awaiting_approval()
+    if not waiting:
+        print("nothing awaiting approval")
+        return
+    for request in waiting:
+        drafts = repo.get_drafts(request.request_id)
+        contacts = repo.list_contacts(request.request_id)
+        print(f"\n{request.request_id}  patient={request.patient_id}  "
+              f"units={request.units_needed}  by={request.needed_by}")
+        print(f"  cohort: {', '.join(c.donor_id for c in contacts)}")
+        for draft in drafts:
+            head = f"  [{draft['language']}/{draft['channel']}]"
+            if draft.get("subject"):
+                print(f"{head} subject: {draft['subject']}")
+            else:
+                print(head)
+            for line in draft["body"].splitlines():
+                print(f"      {line}")
+
+
 async def ping(channel: str, recipient: str, body: str) -> None:
     active = registry()
     if channel not in active:
@@ -115,6 +149,12 @@ def main() -> None:
     sub.add_parser("seed")
     sub.add_parser("reset")
     sub.add_parser("geocode")
+    sub.add_parser("pending")
+
+    ok = sub.add_parser("approve")
+    ok.add_argument("--request", required=True)
+    ok.add_argument("--by", required=True)
+    ok.add_argument("--note")
 
     req = sub.add_parser("request")
     req.add_argument("--patient", required=True)
@@ -137,6 +177,10 @@ def main() -> None:
         reset()
     elif args.command == "geocode":
         geocode()
+    elif args.command == "pending":
+        pending()
+    elif args.command == "approve":
+        approve(args.request, args.by, args.note)
     elif args.command == "request":
         request(args.patient, args.needed_by, args.units)
     else:

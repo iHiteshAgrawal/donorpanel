@@ -9,8 +9,10 @@ from ..nodes import (
     CloseRejected,
     CohortRanker,
     EligibilityResolver,
+    HumanGate,
     IntakeNormalizer,
     MarkVerified,
+    OutreachComposer,
     RequestVerifier,
 )
 from ..nodes.base import find_block, node_text
@@ -29,7 +31,11 @@ def is_rejected(state) -> bool:
     return _verdict(state) == "rejected"
 
 
-def build(agent=None, session_manager=None):
+def has_cohort(state) -> bool:
+    return find_block(node_text(state, "rank"), "cohort_size").get("cohort_size", 0) > 0
+
+
+def build(agent=None, composer_agent=None, session_manager=None):
     builder = GraphBuilder()
     builder.add_node(IntakeNormalizer(), "intake")
     builder.add_node(agent or RequestVerifier(), "verify")
@@ -38,6 +44,8 @@ def build(agent=None, session_manager=None):
     builder.add_node(CloseRejected(), "close")
     builder.add_node(EligibilityResolver(), "eligibility")
     builder.add_node(CohortRanker(), "rank")
+    builder.add_node(OutreachComposer(agent=composer_agent), "compose")
+    builder.add_node(HumanGate(), "gate")
 
     builder.add_edge("intake", "verify")
     builder.add_edge("verify", "adjudicate")
@@ -45,6 +53,8 @@ def build(agent=None, session_manager=None):
     builder.add_edge("adjudicate", "close", condition=is_rejected)
     builder.add_edge("accept", "eligibility")
     builder.add_edge("eligibility", "rank")
+    builder.add_edge("rank", "compose", condition=has_cohort)
+    builder.add_edge("compose", "gate")
 
     builder.set_entry_point("intake")
     builder.set_max_node_executions(12)
@@ -74,4 +84,6 @@ def run(raw: dict[str, Any], repo: PanelRepository | None = None, graph=None,
         "outcome": find_block(text, "status"),
         "eligibility": find_block(text, "eligible_count"),
         "cohort": find_block(text, "cohort_size"),
+        "drafts": find_block(text, "draft_count"),
+        "gate": find_block(text, "gate"),
     }

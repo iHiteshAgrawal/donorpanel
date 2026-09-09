@@ -66,9 +66,20 @@ The agent roster and orchestration are explicitly pending. The user wants to cho
 Phase 1 Intake is built. `graphs/intake.py` wires it:
 
 ```
-intake ──▶ verify ──▶ adjudicate ──┬─ verified ─▶ accept ──▶ eligibility ──▶ rank
-                                   └─ rejected ─▶ close    status REJECTED
+intake ─▶ verify ─▶ adjudicate ─┬─ verified ─▶ accept ─▶ eligibility ─▶ rank
+                                └─ rejected ─▶ close                     │
+                                                        cohort empty ◀───┤
+                                                                         ▼
+                                                          compose ──▶ gate
 ```
+
+Phase 3 Approve is built. `OutreachComposer` is the second and last model-backed node. It groups the cohort by language and channel, hands the agent a **brief containing the patient's first name and nothing else**, and gets back one `Draft` per group through structured output. No age, no diagnosis, no surname, no phone number. There is a test asserting the surname and the condition never appear in the brief.
+
+`HumanGate` is a hard stop, not a prompt instruction. It reads `approvals/<request id>.json` from storage. Absent, it sets the request to AWAITING_APPROVAL and returns `pending` along with exactly who would have been contacted. Present, it returns `approved` with the approver's name. **Nothing downstream of the gate can run until a human writes that object**, which is the whole point of the design.
+
+The `rank ─▶ compose` edge is conditional on a non-empty cohort, so an unmatched request stops at `rank` rather than drafting messages to nobody.
+
+Coordinator commands: `donorpanel pending` prints the queue with the full drafts, `donorpanel approve --request <id> --by <name>` opens the gate.
 
 Phase 2 Match is built and is **entirely deterministic**. Blood matching is rules and arithmetic, so no model call belongs in it. `EligibilityResolver` expands the recipient's blood group through the red cell compatibility table, pulls each compatible pool, and filters on the policy's `donor_eligibility` plus consent, reachability and antigen requirements, emitting every exclusion with its reason. `CohortRanker` scores the survivors on rest since last donation, contact fatigue, repeat-donor preference and haversine proximity, writes ranked `Contact` rows, and moves the request to MATCHING.
 
@@ -82,7 +93,9 @@ That second call is not decoration. Measured on Nova with a single call, **1 run
 
 `Adjudicate` stays as the last line of defence and **fails closed**: no usable decision means rejected, `decided_by: fallback`, held for human review. Structured output should make that unreachable, and the graph must still be correct when it is not.
 
-Node naming: `JsonNode` is the base for anything returning a dict the graph serialises. Most subclasses are deterministic and never call a model. `RequestVerifier` is the exception and is the only node in the graph that does.
+Node naming: `JsonNode` is the base for anything returning a dict the graph serialises. Most subclasses are deterministic and never call a model. `RequestVerifier` and `OutreachComposer` are the only two that do.
+
+Tests must stub **both** model-backed nodes. `flow.build(agent=..., composer_agent=...)` takes both. Forgetting the composer sends the suite to real Bedrock, which showed up as the run time jumping from 2.5s to 12s rather than as a failure.
 
 `IntakeNormalizer` is a `DeterministicNode` that resolves the patient, loads the matching policy, computes the fact sheet and persists a DRAFT request. It makes no model call. `RequestVerifier` is an `Agent` that only reasons about the numbers it is handed, and has one tool, `request_history`. Conditional edges read the verdict JSON out of the verify node's output.
 

@@ -1,3 +1,3 @@
-from . import verifier
+from . import composer, verifier
 
-__all__ = ["verifier"]
+__all__ = ["composer", "verifier"]
