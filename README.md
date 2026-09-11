@@ -49,11 +49,14 @@ uv run donorpanel status        # confirms what is wired up
 
 ### What to click
 
-1. **Run request graph** in the left panel. The centre canvas lights up node by node as the graph streams; the whole run takes 30 to 70 seconds, mostly model latency.
-2. The first run for a patient **escalates** and lands in `awaiting_approval`, because the autonomy gate treats a first-ever request as something a human should see. Approve it under **Drafts**.
-3. Run it again with a later date. This one **auto-sends**: routine repeat, cohort covers the units, every donor inside their contact budget. Click the `gate` node to see which checks passed.
-4. **Agent memory** (right column) fills in as runs complete. See below for what to expect.
-5. **Reset sandbox** wipes your data and reseeds. Each browser gets its own sandbox, so two browser profiles never see each other's requests.
+1. Press **Run request** under *New request*. The **Agent pipeline** canvas lights up node by node as the run streams. It takes 30 to 70 seconds, almost all of it model latency, so the per-node progress is the point rather than a spinner.
+2. The first run for a patient **escalates**. The **Autonomy decision** card reads *Needs coordinator review* and lists why under *Escalation reasons*, the first being that this is the first request ever for this patient. Type a name and press **Approve** on that card.
+3. Run it again with a later `Needed by` date. This one reads *Sent automatically*, with *Checks passed* showing what the gate verified: routine repeat, cohort covers the units, every donor inside their contact budget. Nobody was asked.
+4. **Agent processes** on the right fills in as runs complete. A finding lands within seconds. A *Learned preference* needs a minute or more and at least two prior runs before a pattern exists to extract, then a refresh.
+5. Run a third time and open the **Node output** tab on the `compose` node. Its brief now carries `prior_context`, which is what the agent remembered from earlier runs.
+6. **Reset sandbox** in the header wipes your data and reseeds. Each browser profile gets its own sandbox, so two windows never see each other's requests.
+
+The detail tabs under the graph are **Cohort** (who was matched and why), **Drafts** (the outreach messages), **Node output** (raw JSON per node) and **Map** (donor geography).
 
 ## How it works
 
@@ -102,8 +105,17 @@ On the next run, `compose` reads that memory back with a single prefix query and
 
 - **Namespaces are organization, not access control.** The real boundary AWS documents is an IAM condition on `bedrock-agentcore:actorId` bound to a per-user principal. One FastAPI process holding one credential for every visitor cannot have that. Actor scoping here is enforced by the application, not by IAM.
 - **Anonymous actor ids come from a client-supplied header.** `X-DonorPanel-Session` is a UUID the browser generates and persists. Good enough to give each visitor a private sandbox; not an authentication boundary. Under Cognito the actor is the token's `sub` claim and this caveat does not apply.
-- **Alarms have no SNS action.** They report state in the CloudWatch console and page nobody. Deliberate for a demo account.
 - Aadhaar numbers are never stored. Verification discards them.
+
+## Not built yet
+
+Honest list, so nothing here reads as more finished than it is.
+
+- **Nothing is actually sent.** The gate decides to dispatch and the drafts are real, but no email or Telegram message leaves the process. The channel interfaces exist; the delivery phase does not.
+- **Sign-in has no UI.** Cognito is wired and validated server side, so `Authorization: Bearer <token>` works, but the SPA never sends one. Every visitor is an anonymous sandbox.
+- **No CloudWatch alarms or memory log delivery.** The IAM policy grants it and the posture is decided, but the provisioning command is not written.
+- **The scheduled graph is not built.** Forecasting the next transfusion date and keeping the registry warm are the predictive half of the thesis and remain a design.
+- **`reset` cannot purge raw memory events** unless the IAM policy grants `bedrock-agentcore:ListSessions`. Without it the records are deleted and the underlying events survive; the call degrades quietly rather than failing the reset.
 
 ## Development
 
