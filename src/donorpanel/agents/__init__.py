@@ -1,3 +1,3 @@
-from . import composer, verifier
+from . import assistant, composer, verifier
 
-__all__ = ["composer", "verifier"]
+__all__ = ["assistant", "composer", "verifier"]

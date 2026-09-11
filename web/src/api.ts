@@ -18,6 +18,16 @@ export const api = {
   me: () => get<Actor>('/api/me'),
   memory: () => get<MemoryRecord[]>('/api/memory'),
 
+  chat: async (text: string) => {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ text }),
+    })
+    if (!response.ok) throw new Error(await response.text())
+    return (await response.json()) as { text: string }
+  },
+
   resetSandbox: async () => {
     const response = await fetch('/api/sandbox/reset', { method: 'POST', headers: headers() })
     if (!response.ok) throw new Error(await response.text())

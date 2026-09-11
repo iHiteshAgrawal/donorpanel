@@ -10,6 +10,10 @@ class NewRequest(BaseModel):
     prescription_ref: str | None = None
 
 
+class ChatTurn(BaseModel):
+    text: str = Field(min_length=1, max_length=2000)
+
+
 class Approval(BaseModel):
     by: str = Field(min_length=1)
     note: str | None = None

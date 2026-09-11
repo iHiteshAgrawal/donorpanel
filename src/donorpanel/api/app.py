@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -10,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .. import auth, memory, outreach
+from .. import auth, chat, inbound, memory, outreach, public
 from .. import seed as seeds
 from ..auth import Actor
 from ..config import config
@@ -20,13 +21,33 @@ from ..hooks import MemoryWriter
 from ..nodes.base import find_block
 from ..storage import PanelRepository, store
 from .graphshape import EDGES, NODES
-from .schema import Approval, NewRequest
+from .schema import Approval, ChatTurn, NewRequest
+
+# uvicorn only configures its own loggers, so without this the inbound poller and
+# every memory warning run silently.
+logging.basicConfig(level=logging.INFO,
+                    format="%(levelname)s %(name)s: %(message)s")
+# httpx logs the full request URL, and a Telegram URL carries the bot token in its
+# path. At INFO that writes the credential into CloudWatch on every send.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 app = FastAPI(title="DonorPanel", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
 
 WEB = Path(__file__).resolve().parents[3] / "web" / "dist"
+
+
+@app.on_event("startup")
+async def listen_for_replies() -> None:
+    app.state.inbound = asyncio.create_task(inbound.poll_forever())
+
+
+@app.on_event("shutdown")
+async def stop_listening() -> None:
+    task = getattr(app.state, "inbound", None)
+    if task:
+        task.cancel()
 
 
 def current_actor(request: Request,
@@ -68,6 +89,22 @@ def me(actor: Actor = Depends(current_actor)) -> dict:
             "authenticated": actor.authenticated, "namespace": actor.prefix}
 
 
+@app.get("/api/public")
+def public_pool() -> dict:
+    """Feeds the landing page. No actor: this is the shared pool anyone can join."""
+    panel = public.ensure()
+    patient = panel.get_patient(public.PATIENT["patient_id"])
+    counts = public.headcount(panel)
+    return {
+        "bot": config.telegram_bot_username,
+        "donors": counts["donors"],
+        "cities": counts["cities"],
+        "patient": {"name": patient.name, "blood_group": patient.blood_group,
+                    "condition": patient.condition.value, "city": patient.city,
+                    "hospital": patient.hospital} if patient else None,
+    }
+
+
 @app.get("/api/graph")
 def graph_shape() -> dict:
     return {"nodes": NODES, "edges": EDGES}
@@ -87,8 +124,7 @@ def patients(actor: Actor = Depends(current_actor)) -> list[dict]:
 @app.get("/api/donors")
 def donors(actor: Actor = Depends(current_actor)) -> list[dict]:
     store = repo(actor)
-    ids = [k.rsplit("/", 1)[-1].removesuffix(".json") for k in store.store.keys("donors/")]
-    found = [store.get_donor(i) for i in ids]
+    found = store.list_donors()
     return [{"donor_id": d.donor_id, "name": d.name, "blood_group": d.blood_group,
              "city": d.city, "lat": d.lat, "lon": d.lon, "channel": d.channel,
              "language": d.language, "consent": d.consent,
@@ -164,6 +200,14 @@ def reset_sandbox(actor: Actor = Depends(current_actor)) -> dict:
 @app.get("/api/memory")
 def remembered(actor: Actor = Depends(current_actor)) -> list[dict]:
     return memory.catalogue(actor.actor_id)
+
+
+@app.post("/api/chat")
+async def talk(body: ChatTurn, actor: Actor = Depends(current_actor)) -> dict:
+    store = repo(actor)
+    answer = await asyncio.to_thread(chat.reply, store, body.text,
+                                     actor_id=actor.actor_id)
+    return {"text": answer}
 
 
 @app.get("/api/pending")

@@ -1,4 +1,6 @@
 import json
+import logging
+import time
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -7,6 +9,8 @@ from .. import memory, policies
 from ..agents import composer
 from ..domain import RequestSource, RequestStatus
 from .base import JsonNode
+
+log = logging.getLogger(__name__)
 
 
 class Draft(BaseModel):
@@ -23,9 +27,31 @@ class Drafts(BaseModel):
 class OutreachComposer(JsonNode):
     name = "compose"
 
-    def __init__(self, agent=None):
+    def __init__(self, agent=None, attempts: int = 3):
         super().__init__()
         self.agent = agent or composer.build()
+        self.attempts = attempts
+
+    def compose(self, brief: dict, invocation_state: dict[str, Any]):
+        """Nova intermittently returns modelStreamErrorException on structured output
+        ("Model produced invalid sequence as part of ToolUse"). It is transient and a
+        retry clears it; without one the gate escalates for "no drafts were produced".
+        """
+        prompt = json.dumps(brief, indent=2, ensure_ascii=False)
+        last: Exception | None = None
+        for attempt in range(self.attempts):
+            try:
+                return self.agent(
+                    prompt,
+                    invocation_state=invocation_state,
+                    structured_output_model=Drafts,
+                    structured_output_prompt="Produce one draft per language and channel group.",
+                )
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                log.warning("compose attempt %d failed: %s", attempt + 1, exc)
+                time.sleep(1.5 * (attempt + 1))
+        raise last
 
     def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:
         repo = invocation_state["repo"]
@@ -63,12 +89,7 @@ class OutreachComposer(JsonNode):
             return {"request_id": request.request_id, "drafts": [],
                     "problem": "no contacts to write to"}
 
-        result = self.agent(
-            json.dumps(brief, indent=2, ensure_ascii=False),
-            invocation_state=invocation_state,
-            structured_output_model=Drafts,
-            structured_output_prompt="Produce one draft per language and channel group.",
-        )
+        result = self.compose(brief, invocation_state)
         drafts = []
         for draft in result.structured_output.drafts:
             row = draft.model_dump()

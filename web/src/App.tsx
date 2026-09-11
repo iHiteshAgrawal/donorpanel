@@ -6,6 +6,7 @@ import { HeroSection } from './components/HeroSection'
 import { Cohort, Drafts, NodeOutput, RequestRow } from './components/Inspector'
 import { LiveStatus } from './components/LiveStatus'
 import { Memory } from './components/Memory'
+import { Assistant } from './components/Assistant'
 import { Outreach } from './components/Outreach'
 import { OutcomeCard } from './components/OutcomeCard'
 import { Badge, Button, Empty, Field, Icon, Panel, inputClass } from './components/ui'
@@ -415,8 +416,17 @@ export default function App() {
                 ))}
           </div>
 
+          {/* Ask Asha */}
+          <div className="flex min-h-0 flex-1 flex-col border-t border-border">
+            <div className="flex items-center gap-2 px-5 py-3">
+              <Icon name="brain" size={16} className="text-agent" />
+              <h2 className="text-[15px] font-semibold text-text">Ask Asha</h2>
+            </div>
+            <Assistant />
+          </div>
+
           {/* Memory */}
-          <div className="h-64 shrink-0 overflow-auto">
+          <div className="h-56 shrink-0 overflow-auto border-t border-border">
             <div className="flex items-center justify-between px-5 py-3">
               <h2 className="flex items-center gap-2 text-[15px] font-semibold text-text">
                 <Icon name="brain" size={16} className="text-agent" />

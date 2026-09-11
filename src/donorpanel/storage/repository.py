@@ -54,6 +54,11 @@ class PanelRepository:
                     self._donors[donor_id] = donor
         return [d for d in (self._donors.get(i) for i in donor_ids) if d is not None]
 
+    def list_donors(self) -> list[Donor]:
+        ids = [k.rsplit("/", 1)[-1].removesuffix(".json")
+               for k in self.store.keys("donors/")]
+        return sorted(self.get_donors(ids), key=lambda d: d.donor_id)
+
     def list_pool(self, region: str, blood_group: str) -> list[Donor]:
         prefix = o.POOL.format(region=region, blood_group=blood_group, donor_id="")
         ids = [key.rsplit("/", 1)[-1] for key in self.store.keys(prefix)]
@@ -147,6 +152,15 @@ class PanelRepository:
         found = [self.get_request(i) for i in ids]
         return [r for r in found
                 if r is not None and r.status == RequestStatus.AWAITING_APPROVAL]
+
+    def in_flight(self) -> list[Request]:
+        """Requests a donor could still be answering: waiting on a coordinator, or
+        already sent out and not yet closed."""
+        ids = [k.rsplit("/", 1)[-1].removesuffix(".json")
+               for k in self.store.keys("requests/")]
+        found = [self.get_request(i) for i in ids]
+        return [r for r in found if r is not None and r.status in
+                (RequestStatus.AWAITING_APPROVAL, RequestStatus.DISPATCHED)]
 
     def get_credit(self, patient_id: str) -> Credit:
         item = self.store.get(o.CREDIT.format(patient_id=patient_id))

@@ -36,10 +36,13 @@ def is_empty(repo) -> bool:
 
 
 def address_for(channel: str, donor_id: str) -> str:
-    """Demo donors are fictional, so their telegram messages route to the operator's
-    own chat. The Bot API call and its receipt are real; only the recipient is shared."""
+    """Demo donors are fictional, so their messages route to the operator's own chat
+    and inbox. The API calls and their receipts are real; only the recipient is shared.
+    SES in the sandbox can only send to a verified address, so this is also required."""
     if channel == "telegram" and config.telegram_demo_chat_id:
         return config.telegram_demo_chat_id
+    if channel == "email" and config.ses_demo_email:
+        return config.ses_demo_email
     return f"{donor_id}@example.test"
 
 

@@ -16,9 +16,12 @@ class Config:
             c.strip() for c in os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",") if c.strip()
         )
     )
+    telegram_bot_username: str = field(
+        default_factory=lambda: os.getenv("TELEGRAM_BOT_USERNAME", "donorpanelbot"))
     telegram_demo_chat_id: str | None = field(
         default_factory=lambda: os.getenv("TELEGRAM_DEMO_CHAT_ID") or None)
     ses_sender_email: str | None = field(default_factory=lambda: os.getenv("SES_SENDER_EMAIL") or None)
+    ses_demo_email: str | None = field(default_factory=lambda: os.getenv("SES_DEMO_EMAIL") or None)
     bucket: str | None = field(default_factory=lambda: os.getenv("DONORPANEL_BUCKET") or None)
     agentcore_memory_id: str | None = field(
         default_factory=lambda: os.getenv("AGENTCORE_MEMORY_ID") or None)
