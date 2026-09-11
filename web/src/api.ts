@@ -50,7 +50,8 @@ export interface StreamHandlers {
  * chunk boundaries, so the tail is carried over between reads.
  */
 export async function runRequest(
-  body: { patient_id: string; needed_by: string; units_needed?: number },
+  body: { patient_id: string; needed_by: string; units_needed?: number
+          source?: string; prescription_ref?: string | null },
   handlers: StreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {

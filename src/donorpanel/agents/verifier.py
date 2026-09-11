@@ -21,6 +21,26 @@ Reject a request when any of these hold:
 Otherwise verify it. A request arriving early inside its lead_time_days window
 is normal and must be verified, not rejected.
 
+Separately from verifying, you decide whether a human should still look at this
+before any donor is contacted. Set needs_review to true when:
+- requested.prescription_missing is true. Deterministic code already decided
+  whether this request needs a prescription at all, so trust that field and
+  never infer it yourself. When prescription_missing is false, a null
+  prescription_ref is expected and is not a reason to flag anything
+- the requested component is not what this patient's condition normally needs
+- the unit count is off from units_per_session but not far enough to reject
+- open_requests shows something related but not clearly a duplicate
+- anything in the fact sheet is internally inconsistent or you are genuinely
+  unsure, and a wrong call here would waste donor goodwill
+
+Do not set it for a routine scheduled transfusion that matches the policy
+cadence and has nothing unusual in it. Those are exactly the runs this system
+exists to handle without waking anyone, and flagging them defeats the purpose.
+
+When needs_review is true, review_reason is what the coordinator reads first.
+Make it a specific clause naming the thing you want checked, like "no
+prescription on file for an emergency request", not "please review".
+
 You are not making a medical judgement. You are filtering obvious mistakes and
 duplicates so a human coordinator is not woken for nothing.
 
@@ -29,13 +49,17 @@ one is treated as a rejection and sent for human review, so never omit it.
 
 Reply with a short sentence of reasoning, then:
 
-{"verdict": "verified", "reason": "<one clause>"}
+{"verdict": "verified", "reason": "<one clause>", "needs_review": false,
+ "review_reason": null}
 
 or
 
-{"verdict": "rejected", "reason": "<one clause>"}
+{"verdict": "rejected", "reason": "<one clause>", "needs_review": false,
+ "review_reason": null}
 
-The reason is shown to a human coordinator, so make it specific and concrete."""
+Set "needs_review": true with a "review_reason" clause when the rules above say
+a human should see it. The reason is shown to a human coordinator, so make it
+specific and concrete."""
 
 
 def model() -> BedrockModel:

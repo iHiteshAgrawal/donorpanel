@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from .. import memory, policies
 from ..agents import composer
 from ..domain import RequestSource, RequestStatus
-from .base import JsonNode, find_block, task_text
+from .base import JsonNode
 
 
 class Draft(BaseModel):
@@ -86,21 +86,14 @@ class AutonomyGate(JsonNode):
 
     name = "gate"
 
-    def escalations(self, task: Any, repo, request, patient, rules: dict) -> list[str]:
+    def escalations(self, task: Any, repo, request, rules: dict) -> list[str]:
         why: list[str] = []
 
         if rules.get("escalate_on_emergency", True) and request.source is RequestSource.EMERGENCY:
             why.append("emergency request, not a scheduled transfusion")
 
-        history = [r for r in repo.list_requests(request.patient_id)
-                   if r.request_id != request.request_id]
-        if rules.get("escalate_on_first_request", True) and not history:
-            why.append(f"first request ever for {patient.name}")
-
-        if rules.get("escalate_on_fallback_verdict", True):
-            verdict = find_block(task_text(task), "verdict")
-            if verdict.get("decided_by") == "fallback":
-                why.append("verifier returned no usable decision")
+        if rules.get("escalate_on_agent_review", True) and request.review_reason:
+            why.append(request.review_reason)
 
         contacts = repo.list_contacts(request.request_id)
         needed = request.units_needed * float(rules.get("min_cohort_multiple", 2.0))
@@ -125,7 +118,6 @@ class AutonomyGate(JsonNode):
         repo = invocation_state["repo"]
         request_id = invocation_state["request_id"]
         request = repo.get_request(request_id)
-        patient = repo.get_patient(request.patient_id)
         rules = policies.load(request.policy_id).get("autonomy", {}) or {}
         contacts = repo.list_contacts(request_id)
         cohort = [{"rank": c.rank, "donor_id": c.donor_id, "channel": c.channel}
@@ -143,7 +135,7 @@ class AutonomyGate(JsonNode):
                     "decided_by": "policy", "reasons": ["autonomy disabled for this policy"],
                     "cohort": cohort}
 
-        why = self.escalations(task, repo, request, patient, rules)
+        why = self.escalations(task, repo, request, rules)
         if why:
             repo.set_status(request_id, RequestStatus.AWAITING_APPROVAL)
             return {
@@ -156,7 +148,7 @@ class AutonomyGate(JsonNode):
         repo.set_status(request_id, RequestStatus.DISPATCHED)
         return {
             "request_id": request_id, "gate": "auto", "decided_by": "policy",
-            "checks_passed": ["scheduled request", "known patient with history",
+            "checks_passed": ["scheduled request", "verifier raised nothing for review",
                               "verifier decided", "cohort covers the units needed",
                               "every donor inside their contact budget",
                               "drafts produced"],

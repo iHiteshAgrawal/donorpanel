@@ -36,9 +36,14 @@ class IntakeNormalizer(JsonNode):
             needed_by=needed_by,
             component=Component(raw.get("component") or Component.PACKED_CELLS.value),
             source=RequestSource(raw.get("source") or RequestSource.SCHEDULED.value),
+            prescription_ref=(str(raw["prescription_ref"]).strip()
+                              if raw.get("prescription_ref") else None),
             status=RequestStatus.DRAFT,
         )
         repo.put_request(request)
+
+        needs_prescription = request.source.value in (
+            policy.get("paperwork", {}).get("prescription_required_for") or [])
 
         last = next((r for r in history if r.request_id != request_id), None)
         return {
@@ -53,7 +58,11 @@ class IntakeNormalizer(JsonNode):
                        "lead_time_days": policy["cadence"]["lead_time_days"]},
             "requested": {"units": units, "needed_by": needed_by,
                           "component": request.component.value,
-                          "source": request.source.value},
+                          "source": request.source.value,
+                          "prescription_ref": request.prescription_ref,
+                          "prescription_required": needs_prescription,
+                          "prescription_missing": needs_prescription
+                          and not request.prescription_ref},
             "days_until_needed": (date.fromisoformat(needed_by) - datetime.now(timezone.utc).date()).days,
             "open_requests": [{"request_id": r.request_id, "needed_by": r.needed_by,
                                "status": r.status.value if hasattr(r.status, "value") else r.status}

@@ -9,6 +9,12 @@ from .base import JsonNode, task_text
 class Verdict(BaseModel):
     verdict: Literal["verified", "rejected"]
     reason: str = Field(description="One concrete clause a coordinator will read.")
+    needs_review: bool = Field(
+        default=False,
+        description="True when this should reach a human even though it is verified.")
+    review_reason: str | None = Field(
+        default=None,
+        description="Why a human is needed. Required when needs_review is true.")
 
 
 class RequestVerifier(JsonNode):
@@ -32,5 +38,7 @@ class RequestVerifier(JsonNode):
         return {
             "verdict": decision.verdict,
             "reason": decision.reason,
+            "needs_review": decision.needs_review,
+            "review_reason": decision.review_reason,
             "reasoning": str(result).strip()[:600],
         }

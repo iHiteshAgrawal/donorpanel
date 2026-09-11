@@ -99,6 +99,8 @@ class Request:
     status: RequestStatus = RequestStatus.DRAFT
     units_pledged: int = 0
     rejection_reason: str | None = None
+    review_reason: str | None = None
+    prescription_ref: str | None = None
     created_at: str = field(default_factory=now)
     updated_at: str = field(default_factory=now)
 

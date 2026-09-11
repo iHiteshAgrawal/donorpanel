@@ -50,8 +50,8 @@ uv run donorpanel status        # confirms what is wired up
 ### What to click
 
 1. Press **Run request** under *New request*. The **Agent pipeline** canvas lights up node by node as the run streams. It takes 30 to 70 seconds, almost all of it model latency, so the per-node progress is the point rather than a spinner.
-2. The first run for a patient **escalates**. The **Autonomy decision** card reads *Needs coordinator review* and lists why under *Escalation reasons*, the first being that this is the first request ever for this patient. Type a name and press **Approve** on that card.
-3. Run it again with a later `Needed by` date. This one reads *Sent automatically*, with *Checks passed* showing what the gate verified: routine repeat, cohort covers the units, every donor inside their contact budget. Nobody was asked.
+2. A routine scheduled transfusion reads **Sent automatically**, with *Checks passed* listing what the gate verified: cohort covers the units, every donor inside their contact budget, nothing raised for review. Nobody was woken, which is the whole point.
+3. Now send one the agent should not handle alone. Set **Source** to `emergency` and run again. The **Autonomy decision** card flips to *Needs coordinator review* and lists why under *Escalation reasons*, including any reason the verifier raised in its own words. Type a name and press **Approve**.
 4. **Agent processes** on the right fills in as runs complete. A finding lands within seconds. A *Learned preference* needs a minute or more and at least two prior runs before a pattern exists to extract, then a refresh.
 5. Run a third time and open the **Node output** tab on the `compose` node. Its brief now carries `prior_context`, which is what the agent remembered from earlier runs.
 6. **Reset sandbox** in the header wipes your data and reseeds. Each browser profile gets its own sandbox, so two windows never see each other's requests.
@@ -72,6 +72,8 @@ intake -> verify -> adjudicate -+-> accept -> eligibility -> rank -> compose -> 
 - `eligibility`, `rank` (code) apply the policy YAML: compatibility table, haversine distance, donation recency, contact budget.
 - `compose` (agent) writes one outreach draft per language and channel group.
 - `gate` (code) decides whether the run is routine enough to send without waking anyone.
+
+The verifier can also ask for a human without rejecting, by returning `needs_review` with a reason. That is the one place model judgment reaches the gate, and it arrives as a typed boolean persisted on the request, never as prose the gate has to interpret. What counts as required paperwork is a policy question, so deterministic code decides whether a prescription is needed and the agent only reads the answer.
 
 Conditions on the graph edges read JSON blocks out of node output, never free text.
 

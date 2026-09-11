@@ -57,6 +57,7 @@ export default function App() {
     return date.toISOString().slice(0, 10)
   })
   const [units, setUnits] = useState(2)
+  const [source, setSource] = useState('scheduled')
 
   /* ── Initial data load ─────────────────────────────────── */
   useEffect(() => {
@@ -134,7 +135,7 @@ export default function App() {
 
     try {
       await runRequest(
-        { patient_id: patientId, needed_by: neededBy, units_needed: units },
+        { patient_id: patientId, needed_by: neededBy, units_needed: units, source },
         {
           onNodeStart: (nodeId) => {
             setSelectedNode((current) => current ?? nodeId)
@@ -175,7 +176,7 @@ export default function App() {
       setState('failed')
       setStartedAt(null)
     }
-  }, [patientId, neededBy, units, spec.nodes, refresh, recall])
+  }, [patientId, neededBy, units, source, spec.nodes, refresh, recall])
 
   const open = useCallback(async (id: string) => {
     try {
@@ -354,6 +355,17 @@ export default function App() {
                   />
                 </Field>
               </div>
+              <Field label="Source">
+                <select
+                  className={inputClass}
+                  value={source}
+                  disabled={running}
+                  onChange={(e) => setSource(e.target.value)}
+                >
+                  <option value="scheduled">Scheduled transfusion</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </Field>
               <Button
                 variant="primary"
                 className="w-full"

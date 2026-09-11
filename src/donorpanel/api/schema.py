@@ -7,6 +7,7 @@ class NewRequest(BaseModel):
     units_needed: int | None = None
     component: str | None = None
     source: str | None = None
+    prescription_ref: str | None = None
 
 
 class Approval(BaseModel):

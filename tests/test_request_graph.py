@@ -13,15 +13,19 @@ from donorpanel.storage import FileStore, PanelRepository
 class StubVerifier(JsonNode):
     name = "verify"
 
-    def __init__(self, verdict: str, reason: str = "stub"):
+    def __init__(self, verdict: str, reason: str = "stub", needs_review: bool = False,
+                 review_reason: str | None = None):
         super().__init__()
         self.verdict = verdict
         self.reason = reason
+        self.needs_review = needs_review
+        self.review_reason = review_reason
         self.seen: list[str] = []
 
     def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:
         self.seen.append(str(task))
-        return {"verdict": self.verdict, "reason": self.reason}
+        return {"verdict": self.verdict, "reason": self.reason,
+                "needs_review": self.needs_review, "review_reason": self.review_reason}
 
 
 @pytest.fixture
@@ -48,8 +52,9 @@ class StubComposer:
         )
 
 
-def ask(repo, verdict, reason="stub", composer=None, **overrides):
-    stub = StubVerifier(verdict, reason)
+def ask(repo, verdict, reason="stub", composer=None, needs_review=False,
+        review_reason=None, **overrides):
+    stub = StubVerifier(verdict, reason, needs_review, review_reason)
     graph = flow.build(agent=stub, composer_agent=composer or StubComposer())
     raw = {"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"}
     raw.update(overrides)
@@ -266,19 +271,38 @@ def test_an_empty_cohort_never_reaches_the_composer(repo):
     assert "gate" not in out["path"]
 
 
-def test_a_real_cohort_is_composed_and_gated(repo):
+def test_a_thin_cohort_is_composed_and_escalated(repo):
     with_pool(repo)
     out, _ = ask(repo, "verified")
     assert out["path"][-2:] == ["compose", "gate"]
     assert out["gate"]["gate"] == "escalated"
     assert repo.get_request(out["request_id"]).status == RequestStatus.AWAITING_APPROVAL
-
-
-def test_a_first_ever_request_is_escalated_by_name(repo):
-    with_pool(repo)
-    out, _ = ask(repo, "verified")
-    assert any("first request" in r for r in out["gate"]["reasons"])
     assert [c["donor_id"] for c in out["gate"]["cohort"]] == ["d-one", "d-two"]
+
+
+def test_the_verifier_can_demand_a_human_in_its_own_words(repo):
+    big_pool(repo)
+    ask(repo, "verified", needed_by="2026-10-01")
+    out, _ = ask(repo, "verified", needed_by="2026-11-05", needs_review=True,
+                 review_reason="no prescription on file for this transfusion")
+
+    assert out["gate"]["gate"] == "escalated"
+    assert "no prescription on file for this transfusion" in out["gate"]["reasons"]
+    assert repo.get_request(out["request_id"]).status == RequestStatus.AWAITING_APPROVAL
+
+
+def test_a_review_flag_with_no_reason_still_escalates(repo):
+    big_pool(repo)
+    ask(repo, "verified", needed_by="2026-10-01")
+    out, _ = ask(repo, "verified", needed_by="2026-11-05", needs_review=True)
+    assert out["gate"]["gate"] == "escalated"
+    assert out["gate"]["reasons"] == ["the verifier asked for a human"]
+
+
+def test_a_first_ever_request_is_no_longer_escalated_for_being_first(repo):
+    big_pool(repo)
+    out, _ = ask(repo, "verified")
+    assert out["gate"]["gate"] == "auto"
 
 
 def big_pool(repo):
