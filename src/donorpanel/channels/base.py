@@ -18,7 +18,13 @@ class Inbound:
     body: str
     channel: str
     received_at: str
+    # Who spoke and where to answer are the same thing in a one to one chat and
+    # different in a group. Identity follows the speaker, delivery follows the room.
+    reply_to: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.reply_to = self.reply_to or self.sender
 
 
 @dataclass

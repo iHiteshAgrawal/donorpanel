@@ -49,15 +49,24 @@ class TelegramChannel(Channel):
             if not msg or "text" not in msg:
                 continue
             chat_id = str(msg["chat"]["id"])
+            author = msg.get("from") or {}
+            if author.get("is_bot"):
+                continue
+            # chat.id is the room. In a group that is shared by everyone in it, so
+            # keying identity on it would give a whole group one donor record and one
+            # memory. from.id is the person who actually typed.
+            speaker = str(author.get("id") or chat_id)
             if config.telegram_allowed_chat_ids and chat_id not in config.telegram_allowed_chat_ids:
                 continue
             inbound.append(
                 Inbound(
-                    sender=chat_id,
+                    sender=speaker,
+                    reply_to=chat_id,
                     body=msg["text"],
                     channel=self.name,
                     received_at=datetime.fromtimestamp(msg["date"], tz=timezone.utc).isoformat(),
-                    metadata={"update_id": update["update_id"]},
+                    metadata={"update_id": update["update_id"],
+                              "name": author.get("first_name")},
                 )
             )
         return inbound

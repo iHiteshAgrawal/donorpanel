@@ -19,7 +19,7 @@ async def handle(message, channels) -> str | None:
 
     channel = channels.get(message.channel)
     if channel:
-        await channel.send(Outbound(recipient=message.sender, body=answer))
+        await channel.send(Outbound(recipient=message.reply_to, body=answer))
     if launch.get("launch"):
         # After the reply, never before: the graph takes most of a minute.
         asyncio.create_task(search(launch["launch"], message, channel))
@@ -39,7 +39,7 @@ async def search(ask: dict, message, channel) -> None:
         told = ("I could not finish searching just now. A coordinator will pick this up "
                 "and come back to you.")
     if channel:
-        await channel.send(Outbound(recipient=message.sender, body=told))
+        await channel.send(Outbound(recipient=message.reply_to, body=told))
 
 
 def _summarise(panel, out: dict) -> str:
