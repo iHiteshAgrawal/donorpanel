@@ -37,7 +37,7 @@ export function CohortMap({ patient, donors, cohortIds }: Props) {
             <Polyline
               key={`line-${d.donor_id}`}
               positions={[[patient.lat!, patient.lon!], [d.lat!, d.lon!]]}
-              pathOptions={{ color: '#a78bfa', weight: 1, opacity: 0.35, dashArray: '4 6' }}
+              pathOptions={{ color: '#539FE5', weight: 1, opacity: 0.35, dashArray: '4 6' }}
             />
           ))}
 
@@ -49,8 +49,8 @@ export function CohortMap({ patient, donors, cohortIds }: Props) {
             center={[d.lat!, d.lon!]}
             radius={chosen ? 7 : 4}
             pathOptions={{
-              color: chosen ? '#a78bfa' : '#33415a',
-              fillColor: chosen ? '#a78bfa' : '#232d40',
+              color: chosen ? '#539FE5' : '#414D5C',
+              fillColor: chosen ? '#539FE5' : '#1B232D',
               fillOpacity: chosen ? 0.85 : 0.5,
               weight: chosen ? 2 : 1,
             }}
@@ -68,7 +68,7 @@ export function CohortMap({ patient, donors, cohortIds }: Props) {
         <CircleMarker
           center={[patient.lat, patient.lon]}
           radius={9}
-          pathOptions={{ color: '#34d399', fillColor: '#34d399', fillOpacity: 0.25, weight: 2 }}
+          pathOptions={{ color: '#29AD32', fillColor: '#29AD32', fillOpacity: 0.25, weight: 2 }}
         >
           <Tooltip direction="top" offset={[0, -8]} opacity={1} permanent>
             <span className="font-mono text-[11px]">{patient.name} · {patient.hospital}</span>

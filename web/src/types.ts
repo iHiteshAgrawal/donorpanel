@@ -91,3 +91,16 @@ export interface MemoryRecord {
   namespace: string
   score: number | null
 }
+
+export interface Stats {
+  requests: number
+  by_status?: Record<string, number>
+  awaiting_approval: number
+  donors: number
+}
+
+export interface Verdict {
+  gate: 'auto' | 'escalated' | 'approved'
+  checks_passed?: string[]
+  reasons?: string[]
+}

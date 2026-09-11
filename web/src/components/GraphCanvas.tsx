@@ -21,12 +21,6 @@ const LAYOUT: Record<string, { x: number; y: number }> = {
   gate: { x: 660, y: 600 },
 }
 
-const PHASES = [
-  { label: 'Phase 1 · Intake', x: 0, y: -54 },
-  { label: 'Phase 2 · Match', x: 330, y: 246 },
-  { label: 'Phase 3 · Approve', x: 660, y: 396 },
-]
-
 interface Props {
   spec: { nodes: GraphNodeSpec[]; edges: GraphEdgeSpec[] }
   runs: Record<string, NodeRun>
@@ -66,12 +60,12 @@ export function GraphCanvas({ spec, runs, activeEdges, onSelect, selected }: Pro
           animated: false,
           className: live ? 'flowing' : undefined,
           style: {
-            stroke: live ? '#a78bfa' : '#232d40',
+            stroke: live ? '#a78bfa' : '#414D5C',
             strokeWidth: live ? 2 : 1.25,
             transition: 'stroke .3s',
           },
-          labelStyle: { fill: '#64748b', fontSize: 10, fontFamily: 'var(--font-mono)' },
-          labelBgStyle: { fill: '#0d111a' },
+          labelStyle: { fill: '#8D99A8', fontSize: 10, fontFamily: 'var(--font-mono)' },
+          labelBgStyle: { fill: '#161D26' },
           labelBgPadding: [5, 2] as [number, number],
           labelBgBorderRadius: 3,
         }
@@ -94,14 +88,8 @@ export function GraphCanvas({ spec, runs, activeEdges, onSelect, selected }: Pro
         minZoom={0.4}
         maxZoom={1.4}
       >
-        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#1b2333" />
+        <Background variant={BackgroundVariant.Dots} gap={22} size={1} color="#1B232D" />
       </ReactFlow>
-
-      <div className="pointer-events-none absolute inset-0">
-        {PHASES.map((phase) => (
-          <span key={phase.label} className="sr-only">{phase.label}</span>
-        ))}
-      </div>
     </div>
   )
 }

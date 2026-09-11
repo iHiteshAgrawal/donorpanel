@@ -15,8 +15,8 @@ NODES = [
      "phase": "2 Match", "detail": "Scores on rest, fatigue, proximity and repeat history"},
     {"id": "compose", "label": "OutreachComposer", "kind": "agent",
      "phase": "3 Approve", "detail": "Drafts one message per language and channel"},
-    {"id": "gate", "label": "HumanGate", "kind": "gate",
-     "phase": "3 Approve", "detail": "Hard stop until a coordinator approves"},
+    {"id": "gate", "label": "AutonomyGate", "kind": "gate",
+     "phase": "3 Approve", "detail": "Decides if this run is routine enough to send without waking anyone"},
 ]
 
 EDGES = [

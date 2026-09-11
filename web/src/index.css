@@ -3,24 +3,41 @@
 @import 'leaflet/dist/leaflet.css';
 
 @theme {
-  --color-ink-950: #080b12;
-  --color-ink-900: #0d111a;
-  --color-ink-850: #121826;
-  --color-ink-800: #18202f;
-  --color-ink-700: #232d40;
-  --color-ink-600: #33415a;
-  --color-ink-400: #64748b;
-  --color-ink-300: #94a3b8;
-  --color-ink-200: #cbd5e1;
+  /* ── Cloudscape dark palette ──────────────────────────────── */
+  --color-page-bg: #0F1B2A;
+  --color-surface: #161D26;
+  --color-raised: #1B232D;
+  --color-squid: #232F3E;
+  --color-border: #414D5C;
+  --color-border-dim: #2A3544;
 
+  --color-orange: #FF9900;
+  --color-orange-hover: #EC7211;
+  --color-primary: #539FE5;
+  --color-primary-dim: #539FE5/15;
+
+  --color-text: #D1D5DB;
+  --color-text-strong: #F9FAFB;
+  --color-muted: #8D99A8;
+  --color-faint: #5F6B7A;
+
+  --color-success: #29AD32;
+  --color-success-dim: #29AD32/12;
+  --color-warning: #CEA80D;
+  --color-warning-dim: #CEA80D/12;
+  --color-error: #EB6F6F;
+  --color-error-dim: #EB6F6F/12;
+
+  /* Node kind colours */
   --color-agent: #a78bfa;
-  --color-agent-dim: #2e2545;
-  --color-logic: #60a5fa;
-  --color-logic-dim: #16283f;
-  --color-gate: #fb7185;
-  --color-gate-dim: #3b1f28;
-  --color-good: #34d399;
-  --color-warn: #fbbf24;
+  --color-agent-dim: #a78bfa/12;
+  --color-agent-surface: #2e2545;
+  --color-logic: #539FE5;
+  --color-logic-dim: #539FE5/12;
+  --color-logic-surface: #16283f;
+  --color-gate: #EB6F6F;
+  --color-gate-dim: #EB6F6F/12;
+  --color-gate-surface: #3b1f28;
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
@@ -31,18 +48,18 @@
 html, body, #root { height: 100%; }
 
 body {
-  background: var(--color-ink-950);
-  color: var(--color-ink-200);
+  background: var(--color-page-bg);
+  color: var(--color-text);
   font-family: var(--font-sans);
 }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--color-ink-700); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-ink-600); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-faint); }
 
 .react-flow__attribution { display: none; }
-.leaflet-container { background: var(--color-ink-900); font-family: var(--font-sans); }
+.leaflet-container { background: var(--color-page-bg); font-family: var(--font-sans); }
 .leaflet-control-attribution { font-size: 9px; opacity: .4; }
 
 /* OpenStreetMap has no dark raster tileset and the hosted dark themes now need
@@ -58,3 +75,25 @@ body {
 
 @keyframes dash { to { stroke-dashoffset: -16; } }
 .flowing path { stroke-dasharray: 6 6; animation: dash .6s linear infinite; }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in .4s ease-out both; }
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .5; }
+}
+.animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, var(--color-raised) 25%, var(--color-border-dim) 50%, var(--color-raised) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
