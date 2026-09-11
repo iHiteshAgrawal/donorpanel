@@ -270,15 +270,76 @@ def test_a_real_cohort_is_composed_and_gated(repo):
     with_pool(repo)
     out, _ = ask(repo, "verified")
     assert out["path"][-2:] == ["compose", "gate"]
-    assert out["gate"]["gate"] == "pending"
+    assert out["gate"]["gate"] == "escalated"
     assert repo.get_request(out["request_id"]).status == RequestStatus.AWAITING_APPROVAL
 
 
-def test_nothing_is_sent_before_a_human_approves(repo):
+def test_a_first_ever_request_is_escalated_by_name(repo):
     with_pool(repo)
     out, _ = ask(repo, "verified")
-    assert out["gate"]["waiting_on"] == "coordinator approval"
-    assert [c["donor_id"] for c in out["gate"]["would_contact"]] == ["d-one", "d-two"]
+    assert any("first request" in r for r in out["gate"]["reasons"])
+    assert [c["donor_id"] for c in out["gate"]["cohort"]] == ["d-one", "d-two"]
+
+
+def big_pool(repo):
+    """Six eligible donors, enough to clear a 2x cohort multiple for 2 units."""
+    pool_of(repo, [(f"d-{i}", "B+", True, None, 11.02, 76.96) for i in range(6)])
+    repo.put_patient(Patient(patient_id="p-ravi", name="Ravi Kumar",
+                             condition=Condition.THALASSEMIA, blood_group="B+",
+                             policy_id="thalassemia-india", region="IN-TN",
+                             city="Coimbatore", hospital="Government Hospital",
+                             lat=11.0168, lon=76.9558))
+
+
+def test_a_routine_repeat_request_is_sent_without_waking_anyone(repo):
+    big_pool(repo)
+    ask(repo, "verified", needed_by="2026-10-01")          # establishes history
+    out, _ = ask(repo, "verified", needed_by="2026-11-05")
+
+    assert out["gate"]["gate"] == "auto"
+    assert out["gate"]["decided_by"] == "policy"
+    assert repo.get_request(out["request_id"]).status == RequestStatus.DISPATCHED
+    assert repo.get_approval(out["request_id"])["by"] == "agent"
+
+
+def test_an_emergency_always_escalates(repo):
+    big_pool(repo)
+    ask(repo, "verified", needed_by="2026-10-01")
+    out, _ = ask(repo, "verified", needed_by="2026-11-05", source="emergency")
+    assert out["gate"]["gate"] == "escalated"
+    assert any("emergency" in r for r in out["gate"]["reasons"])
+
+
+def test_a_thin_cohort_escalates_rather_than_sending(repo):
+    with_pool(repo)
+    ask(repo, "verified", needed_by="2026-10-01")
+    out, _ = ask(repo, "verified", needed_by="2026-11-05")
+    assert out["gate"]["gate"] == "escalated"
+    assert any("below the" in r for r in out["gate"]["reasons"])
+
+
+def test_a_tired_donor_blocks_autonomy(repo):
+
+    big_pool(repo)
+    ask(repo, "verified", needed_by="2026-10-01")
+    worn = repo.get_donor("d-0")
+    worn.contacts_this_month = 9
+    repo.put_donor(worn)
+    out, _ = ask(repo, "verified", needed_by="2026-11-05")
+    assert out["gate"]["gate"] == "escalated"
+    assert any("contacted 9 times" in r for r in out["gate"]["reasons"])
+
+
+def test_an_existing_human_approval_still_wins(repo):
+    big_pool(repo)
+    first, _ = ask(repo, "verified")
+    repo.approve(first["request_id"], by="coordinator-anita")
+    graph = flow.build(agent=StubVerifier("verified"), composer_agent=StubComposer())
+    again = flow.run({"patient_id": "p-ravi", "units_needed": 2,
+                      "needed_by": "2026-10-01"}, repo=repo, graph=graph,
+                     request_id=first["request_id"])
+    assert again["gate"]["gate"] == "approved"
+    assert again["gate"]["decided_by"] == "human"
 
 
 def test_the_gate_opens_once_approval_is_recorded(repo):

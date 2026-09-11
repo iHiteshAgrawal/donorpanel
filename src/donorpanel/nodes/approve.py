@@ -3,9 +3,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .. import policies
 from ..agents import composer
-from ..domain import RequestStatus
-from .base import JsonNode
+from ..domain import RequestSource, RequestStatus
+from .base import JsonNode, find_block, task_text
 
 
 class Draft(BaseModel):
@@ -70,6 +71,90 @@ class OutreachComposer(JsonNode):
         repo.put_drafts(request.request_id, drafts)
         return {"request_id": request.request_id, "brief": brief,
                 "draft_count": len(drafts), "drafts": drafts}
+
+
+class AutonomyGate(JsonNode):
+    """Decides whether this run is routine enough to send without waking anyone."""
+
+    name = "gate"
+
+    def escalations(self, task: Any, repo, request, patient, rules: dict) -> list[str]:
+        why: list[str] = []
+
+        if rules.get("escalate_on_emergency", True) and request.source is RequestSource.EMERGENCY:
+            why.append("emergency request, not a scheduled transfusion")
+
+        history = [r for r in repo.list_requests(request.patient_id)
+                   if r.request_id != request.request_id]
+        if rules.get("escalate_on_first_request", True) and not history:
+            why.append(f"first request ever for {patient.name}")
+
+        if rules.get("escalate_on_fallback_verdict", True):
+            verdict = find_block(task_text(task), "verdict")
+            if verdict.get("decided_by") == "fallback":
+                why.append("verifier returned no usable decision")
+
+        contacts = repo.list_contacts(request.request_id)
+        needed = request.units_needed * float(rules.get("min_cohort_multiple", 2.0))
+        if len(contacts) < needed:
+            why.append(f"cohort of {len(contacts)} is below the "
+                       f"{needed:g} needed for {request.units_needed} units")
+
+        cap = rules.get("max_contacts_per_donor_month")
+        if cap is not None:
+            for contact in contacts:
+                donor = repo.get_donor(contact.donor_id)
+                if donor and donor.contacts_this_month >= cap:
+                    why.append(f"{donor.name} has already been contacted "
+                               f"{donor.contacts_this_month} times this month")
+                    break
+
+        if not repo.get_drafts(request.request_id):
+            why.append("no drafts were produced")
+        return why
+
+    def run(self, task: Any, invocation_state: dict[str, Any]) -> dict[str, Any]:
+        repo = invocation_state["repo"]
+        request_id = invocation_state["request_id"]
+        request = repo.get_request(request_id)
+        patient = repo.get_patient(request.patient_id)
+        rules = policies.load(request.policy_id).get("autonomy", {}) or {}
+        contacts = repo.list_contacts(request_id)
+        cohort = [{"rank": c.rank, "donor_id": c.donor_id, "channel": c.channel}
+                  for c in contacts]
+
+        existing = repo.get_approval(request_id)
+        if existing and existing.get("approved"):
+            return {"request_id": request_id, "gate": "approved",
+                    "decided_by": "human", "by": existing.get("by"),
+                    "at": existing.get("at"), "cohort": cohort}
+
+        if not rules.get("enabled", False):
+            repo.set_status(request_id, RequestStatus.AWAITING_APPROVAL)
+            return {"request_id": request_id, "gate": "escalated",
+                    "decided_by": "policy", "reasons": ["autonomy disabled for this policy"],
+                    "cohort": cohort}
+
+        why = self.escalations(task, repo, request, patient, rules)
+        if why:
+            repo.set_status(request_id, RequestStatus.AWAITING_APPROVAL)
+            return {
+                "request_id": request_id, "gate": "escalated", "decided_by": "policy",
+                "reasons": why, "cohort": cohort,
+                "command": f"donorpanel approve --request {request_id} --by <your name>",
+            }
+
+        repo.approve(request_id, by="agent", note="routine, met every autonomy condition")
+        repo.set_status(request_id, RequestStatus.DISPATCHED)
+        return {
+            "request_id": request_id, "gate": "auto", "decided_by": "policy",
+            "checks_passed": ["scheduled request", "known patient with history",
+                              "verifier decided", "cohort covers the units needed",
+                              "every donor inside their contact budget",
+                              "drafts produced"],
+            "cohort": cohort,
+            "notified": "coordinator digest, not an approval request",
+        }
 
 
 class HumanGate(JsonNode):

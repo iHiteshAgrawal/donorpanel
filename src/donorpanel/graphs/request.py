@@ -6,10 +6,10 @@ from strands.multiagent import GraphBuilder
 
 from ..nodes import (
     Adjudicate,
+    AutonomyGate,
     CloseRejected,
     CohortRanker,
     EligibilityResolver,
-    HumanGate,
     IntakeNormalizer,
     MarkVerified,
     OutreachComposer,
@@ -45,7 +45,7 @@ def build(agent=None, composer_agent=None, session_manager=None):
     builder.add_node(EligibilityResolver(), "eligibility")
     builder.add_node(CohortRanker(), "rank")
     builder.add_node(OutreachComposer(agent=composer_agent), "compose")
-    builder.add_node(HumanGate(), "gate")
+    builder.add_node(AutonomyGate(), "gate")
 
     builder.add_edge("intake", "verify")
     builder.add_edge("verify", "adjudicate")
@@ -86,4 +86,5 @@ def run(raw: dict[str, Any], repo: PanelRepository | None = None, graph=None,
         "cohort": find_block(text, "cohort_size"),
         "drafts": find_block(text, "draft_count"),
         "gate": find_block(text, "gate"),
+        "autonomy": find_block(text, "decided_by"),
     }

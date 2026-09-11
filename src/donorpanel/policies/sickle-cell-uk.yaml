@@ -20,3 +20,10 @@ outreach:
   cohort_size: 12
   escalation_hours: [0, 24, 72]
   channels: [email, telegram]
+autonomy:
+  enabled: true
+  min_cohort_multiple: 3.0
+  max_contacts_per_donor_month: 4
+  escalate_on_emergency: true
+  escalate_on_first_request: true
+  escalate_on_fallback_verdict: true
