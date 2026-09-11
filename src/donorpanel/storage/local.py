@@ -4,8 +4,8 @@ from typing import Any
 
 
 class FileStore:
-    def __init__(self, root: str | Path = "data/local"):
-        self.root = Path(root)
+    def __init__(self, root: str | Path = "data/local", prefix: str = ""):
+        self.root = Path(root) / prefix if prefix else Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:

@@ -76,3 +76,11 @@ export interface NodeRun {
   ms?: number
   output?: string
 }
+
+export interface Actor {
+  actor_id: string
+  name: string
+  email: string | null
+  authenticated: boolean
+  namespace: string
+}

@@ -17,8 +17,12 @@ __all__ = [
 ]
 
 
-def store():
-    return ObjectStore() if config.bucket else FileStore(config.local_root)
+def store(prefix: str = ""):
+    """Prefix scopes one actor's sandbox. Empty means the shared root, which is
+    where the seed template and the global geocode cache live."""
+    if config.bucket:
+        return ObjectStore(prefix=prefix)
+    return FileStore(config.local_root, prefix=prefix)
 
 
 def session_manager(session_id: str) -> SessionManager:

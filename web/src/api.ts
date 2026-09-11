@@ -1,7 +1,8 @@
-import type { Donor, GraphEdgeSpec, GraphNodeSpec, Patient, RequestDetail } from './types'
+import { headers } from './session'
+import type { Actor, Donor, GraphEdgeSpec, GraphNodeSpec, Patient, RequestDetail } from './types'
 
 async function get<T>(path: string): Promise<T> {
-  const response = await fetch(path)
+  const response = await fetch(path, { headers: headers() })
   if (!response.ok) throw new Error(`${path} returned ${response.status}`)
   return response.json() as Promise<T>
 }
@@ -14,11 +15,18 @@ export const api = {
   requests: () => get<RequestDetail[]>('/api/requests'),
   detail: (id: string) => get<RequestDetail>(`/api/requests/${id}`),
   stats: () => get<{ requests: number; awaiting_approval: number; donors: number }>('/api/stats'),
+  me: () => get<Actor>('/api/me'),
+
+  resetSandbox: async () => {
+    const response = await fetch('/api/sandbox/reset', { method: 'POST', headers: headers() })
+    if (!response.ok) throw new Error(await response.text())
+    return (await response.json()) as { cleared: number }
+  },
 
   approve: async (id: string, by: string, note?: string) => {
     const response = await fetch(`/api/requests/${id}/approve`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ by, note: note ?? null }),
     })
     if (!response.ok) throw new Error(await response.text())
@@ -47,7 +55,7 @@ export async function runRequest(
 ): Promise<void> {
   const response = await fetch('/api/requests/stream', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
     signal,
   })

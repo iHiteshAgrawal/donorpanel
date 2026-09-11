@@ -11,12 +11,13 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import auth
+from .. import seed as seeds
 from ..auth import Actor
 from ..config import config
 from ..domain import RequestStatus
 from ..graphs import request as flow
 from ..nodes.base import find_block
-from ..storage import PanelRepository
+from ..storage import PanelRepository, store
 from .graphshape import EDGES, NODES
 from .schema import Approval, NewRequest
 
@@ -38,8 +39,15 @@ def current_actor(request: Request,
         raise HTTPException(401, f"invalid token: {exc}") from exc
 
 
-def repo() -> PanelRepository:
-    return PanelRepository()
+def repo(actor: Actor | None = None) -> PanelRepository:
+    """One namespace per actor. A fresh sandbox is seeded on first sight, reusing
+    coordinates already resolved in the shared root so we do not re-geocode."""
+    if actor is None:
+        return PanelRepository()
+    scoped = PanelRepository(store=store(actor.prefix))
+    if seeds.is_empty(scoped):
+        seeds.populate(scoped, seeds.coordinates_from(PanelRepository()))
+    return scoped
 
 
 def sse(event: str, payload: Any) -> str:
@@ -65,8 +73,8 @@ def graph_shape() -> dict:
 
 
 @app.get("/api/patients")
-def patients() -> list[dict]:
-    store = repo()
+def patients(actor: Actor = Depends(current_actor)) -> list[dict]:
+    store = repo(actor)
     ids = [k.rsplit("/", 1)[-1].removesuffix(".json") for k in store.store.keys("patients/")]
     found = [store.get_patient(i) for i in ids]
     return [{"patient_id": p.patient_id, "name": p.name, "blood_group": p.blood_group,
@@ -76,8 +84,8 @@ def patients() -> list[dict]:
 
 
 @app.get("/api/donors")
-def donors() -> list[dict]:
-    store = repo()
+def donors(actor: Actor = Depends(current_actor)) -> list[dict]:
+    store = repo(actor)
     ids = [k.rsplit("/", 1)[-1].removesuffix(".json") for k in store.store.keys("donors/")]
     found = [store.get_donor(i) for i in ids]
     return [{"donor_id": d.donor_id, "name": d.name, "blood_group": d.blood_group,
@@ -89,10 +97,10 @@ def donors() -> list[dict]:
 
 
 @app.get("/api/requests")
-def requests() -> list[dict]:
+def requests(actor: Actor = Depends(current_actor)) -> list[dict]:
     # Summary only. Building full detail per row means several S3 round trips each,
     # which made this endpoint slow enough to stall the whole UI on first paint.
-    store = repo()
+    store = repo(actor)
     ids = [k.rsplit("/", 1)[-1].removesuffix(".json") for k in store.store.keys("requests/")]
     with ThreadPoolExecutor(max_workers=12) as pool:
         found = list(pool.map(store.get_request, ids))
@@ -107,8 +115,8 @@ def requests() -> list[dict]:
 
 
 @app.get("/api/requests/{request_id}")
-def detail(request_id: str) -> dict:
-    store = repo()
+def detail(request_id: str, actor: Actor = Depends(current_actor)) -> dict:
+    store = repo(actor)
     request = store.get_request(request_id)
     if request is None:
         raise HTTPException(404, f"no request {request_id}")
@@ -129,26 +137,35 @@ def detail(request_id: str) -> dict:
 
 
 @app.post("/api/requests/{request_id}/approve")
-def approve(request_id: str, body: Approval) -> dict:
-    store = repo()
+def approve(request_id: str, body: Approval, actor: Actor = Depends(current_actor)) -> dict:
+    store = repo(actor)
     if store.get_request(request_id) is None:
         raise HTTPException(404, f"no request {request_id}")
-    store.approve(request_id, by=body.by, note=body.note)
-    return detail(request_id)
+    store.approve(request_id, by=body.by if not actor.authenticated else actor.name,
+                  note=body.note)
+    return detail(request_id, actor)
+
+
+@app.post("/api/sandbox/reset")
+def reset_sandbox(actor: Actor = Depends(current_actor)) -> dict:
+    scoped = PanelRepository(store=store(actor.prefix))
+    removed = seeds.wipe(scoped)
+    seeds.populate(scoped, seeds.coordinates_from(PanelRepository()))
+    return {"actor_id": actor.actor_id, "cleared": removed, "reseeded": True}
 
 
 @app.get("/api/pending")
-def pending() -> list[dict]:
-    return [detail(r.request_id) for r in repo().awaiting_approval()]
+def pending(actor: Actor = Depends(current_actor)) -> list[dict]:
+    return [detail(r.request_id, actor) for r in repo(actor).awaiting_approval()]
 
 
 @app.post("/api/requests/stream")
-async def run_stream(body: NewRequest) -> StreamingResponse:
+async def run_stream(body: NewRequest, actor: Actor = Depends(current_actor)) -> StreamingResponse:
     raw = {k: v for k, v in body.model_dump().items() if v is not None}
     request_id = f"r-{uuid.uuid4().hex[:10]}"
 
     async def events():
-        store = repo()
+        store = repo(actor)
         graph = flow.build()
         yield sse("started", {"request_id": request_id, "raw": raw})
         collected: list[str] = []
@@ -184,7 +201,7 @@ async def run_stream(body: NewRequest) -> StreamingResponse:
             "eligibility": find_block(blob, "eligible_count"),
             "cohort": find_block(blob, "cohort_size"),
             "gate": find_block(blob, "gate"),
-            "detail": detail(request_id),
+            "detail": detail(request_id, actor),
         })
 
     return StreamingResponse(events(), media_type="text/event-stream",
@@ -193,14 +210,14 @@ async def run_stream(body: NewRequest) -> StreamingResponse:
 
 
 @app.get("/api/stats")
-def stats() -> dict:
-    rows = requests()
+def stats(actor: Actor = Depends(current_actor)) -> dict:
+    rows = requests(actor)
     by_status: dict[str, int] = {}
     for row in rows:
         by_status[row["status"]] = by_status.get(row["status"], 0) + 1
     return {"requests": len(rows), "by_status": by_status,
             "awaiting_approval": by_status.get(RequestStatus.AWAITING_APPROVAL.value, 0),
-            "donors": len(donors())}
+            "donors": len(donors(actor))}
 
 
 if WEB.is_dir():

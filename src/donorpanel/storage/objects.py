@@ -41,18 +41,25 @@ def ensure_bucket() -> None:
 
 
 class ObjectStore:
-    def __init__(self, s3=None, bucket: str | None = None):
+    def __init__(self, s3=None, bucket: str | None = None, prefix: str = ""):
         self._s3 = s3 or client()
         self._bucket = bucket or config.bucket
+        self._prefix = prefix
+
+    # The prefix is transparent: added on the way in, stripped on the way out.
+    # Callers parse ids out of what keys() returns, so leaking it would break them.
+    def _full(self, key: str) -> str:
+        return f"{self._prefix}{key}"
 
     def put(self, key: str, payload: dict[str, Any]) -> None:
-        self._s3.put_object(Bucket=self._bucket, Key=key,
+        self._s3.put_object(Bucket=self._bucket, Key=self._full(key),
                             Body=json.dumps(payload).encode(),
                             ContentType="application/json")
 
     def get(self, key: str) -> dict[str, Any] | None:
         try:
-            body = self._s3.get_object(Bucket=self._bucket, Key=key)["Body"].read()
+            body = self._s3.get_object(Bucket=self._bucket,
+                                       Key=self._full(key))["Body"].read()
         except ClientError as exc:
             if exc.response["Error"]["Code"] in ("NoSuchKey", "404"):
                 return None
@@ -60,14 +67,15 @@ class ObjectStore:
         return json.loads(body)
 
     def touch(self, key: str) -> None:
-        self._s3.put_object(Bucket=self._bucket, Key=key, Body=b"")
+        self._s3.put_object(Bucket=self._bucket, Key=self._full(key), Body=b"")
 
     def delete(self, key: str) -> None:
-        self._s3.delete_object(Bucket=self._bucket, Key=key)
+        self._s3.delete_object(Bucket=self._bucket, Key=self._full(key))
 
     def keys(self, prefix: str) -> list[str]:
         paginator = self._s3.get_paginator("list_objects_v2")
+        cut = len(self._prefix)
         found: list[str] = []
-        for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
-            found.extend(obj["Key"] for obj in page.get("Contents", []))
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=self._full(prefix)):
+            found.extend(obj["Key"][cut:] for obj in page.get("Contents", []))
         return found
