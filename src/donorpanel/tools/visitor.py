@@ -1,7 +1,7 @@
 from strands import ToolContext, tool
 
-from ..domain import Donor
-from ..domain.matching import COMPATIBLE_DONORS, compatible_groups
+from donorpanel.domain import Donor
+from donorpanel.domain.matching import COMPATIBLE_DONORS, compatible_groups
 
 GROUPS = tuple(COMPATIBLE_DONORS.keys())
 
@@ -64,7 +64,7 @@ def register_donor(name: str, city: str, blood_group: str, consent: bool,
         return ("INTERNAL: consent was not given, so nobody was registered. Ask them "
                 "plainly whether they are happy to be contacted.")
 
-    from ..geo import Geocoder
+    from donorpanel.adapters.geo import Geocoder
 
     existing = next((d for d in repo.list_donors() if d.address == str(sender)), None)
     donor_id = existing.donor_id if existing else f"d-{str(sender)[-6:]}-{group.lower().replace('+','p').replace('-','n')}"

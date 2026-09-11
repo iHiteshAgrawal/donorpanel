@@ -3,8 +3,8 @@ from datetime import date, datetime, timezone
 
 from strands import ToolContext, tool
 
-from ..domain import Condition, Patient, RequestStatus
-from ..domain.matching import COMPATIBLE_DONORS
+from donorpanel.domain import Condition, Patient, RequestStatus
+from donorpanel.domain.matching import COMPATIBLE_DONORS
 
 GROUPS = tuple(COMPATIBLE_DONORS.keys())
 CONDITIONS = {c.value: c for c in Condition}
@@ -47,7 +47,7 @@ def start_request(patient_name: str, city: str, blood_group: str, units_needed: 
         return (f"INTERNAL: {units_needed} units is outside one request. Ask them to "
                 f"confirm how many. Nothing has been saved.")
 
-    from ..geo import Geocoder
+    from donorpanel.adapters.geo import Geocoder
 
     where = Geocoder().locate(city)
     patient_id = f"p-{uuid.uuid4().hex[:8]}"

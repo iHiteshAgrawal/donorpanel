@@ -1,8 +1,8 @@
 from strands import Agent
 from strands.models import BedrockModel
 
-from ..config import config
-from ..tools import request_history
+from donorpanel.config import config
+from donorpanel.tools import request_history
 
 SYSTEM_PROMPT = """You verify incoming blood transfusion requests before a
 coordinator spends effort on them, and before any donor is contacted.
@@ -74,4 +74,8 @@ def build(model_override: BedrockModel | None = None) -> Agent:
         model=model_override or model(),
         system_prompt=SYSTEM_PROMPT,
         tools=[request_history],
+        # Strands prints reasoning and replies to stdout by default. On Lambda and
+        # AgentCore Runtime stdout is CloudWatch, so that would write donor names,
+        # dates of birth and blood groups into plaintext logs.
+        callback_handler=None,
     )

@@ -1,5 +1,5 @@
+from donorpanel.adapters.storage import FileStore, PanelRepository
 from donorpanel.domain import Donor
-from donorpanel.storage import FileStore, PanelRepository
 
 
 def test_repository_works_on_the_local_backend(tmp_path):

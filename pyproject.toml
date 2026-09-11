@@ -14,13 +14,14 @@ dependencies = [
     "pydantic>=2.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "bedrock-agentcore>=1.23.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.6", "moto[dynamodb]>=5.0"]
 
 [project.scripts]
-donorpanel = "donorpanel.main:main"
+donorpanel = "donorpanel.entrypoints.cli:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,7 +1,7 @@
-from .donor import my_eligibility, my_request, record_answer
-from .history import request_history
-from .request import request_progress, start_request
-from .visitor import am_i_registered, register_donor, who_needs_blood
+from donorpanel.tools.donor import my_eligibility, my_request, record_answer
+from donorpanel.tools.history import request_history
+from donorpanel.tools.request import request_progress, start_request
+from donorpanel.tools.visitor import am_i_registered, register_donor, who_needs_blood
 
 PUBLIC = [
     who_needs_blood,

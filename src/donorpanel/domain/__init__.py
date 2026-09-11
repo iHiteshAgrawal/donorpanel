@@ -1,11 +1,11 @@
-from .matching import (
+from donorpanel.domain.matching import (
     COMPATIBLE_DONORS,
     compatible_groups,
     distance_km,
     ineligible_reason,
     score,
 )
-from .models import (
+from donorpanel.domain.models import (
     Component,
     Condition,
     Contact,

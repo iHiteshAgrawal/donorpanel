@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 
 from strands import ToolContext, tool
 
-from ..domain import ContactStatus, RequestStatus
-from ..domain.matching import ineligible_reason
+from donorpanel.domain import ContactStatus, RequestStatus
+from donorpanel.domain.matching import ineligible_reason
 
 
 def _ctx(tool_context: ToolContext):
@@ -119,7 +119,7 @@ def my_eligibility(tool_context: ToolContext) -> str:
     if not rows:
         return (f"You are registered as {donor.blood_group} in {donor.city}. "
                 f"Last donation {donor.last_donation or 'not recorded'}.")
-    from .. import policies
+    from donorpanel import policies
 
     request, _ = rows[0]
     policy = policies.load(request.policy_id)

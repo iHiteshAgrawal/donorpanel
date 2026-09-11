@@ -4,10 +4,10 @@ from typing import Any
 
 import pytest
 
+from donorpanel.adapters.storage import FileStore, PanelRepository
 from donorpanel.domain import Condition, Patient, RequestStatus
-from donorpanel.graphs import request as flow
-from donorpanel.nodes.base import JsonNode
-from donorpanel.storage import FileStore, PanelRepository
+from donorpanel.graph import flow
+from donorpanel.graph.nodes.base import JsonNode
 
 
 class StubVerifier(JsonNode):
@@ -30,7 +30,7 @@ class StubVerifier(JsonNode):
 
 def wired():
     """The seeded pool is on telegram, which is not configured in tests."""
-    from donorpanel.channels import ConsoleChannel
+    from donorpanel.adapters.channels import ConsoleChannel
 
     sender = ConsoleChannel()
     return {"telegram": sender, "email": sender, "console": sender}
@@ -232,7 +232,7 @@ class ChattyAgent:
 
 
 def test_structured_output_rescues_a_verifier_that_writes_no_json(repo):
-    from donorpanel.nodes import RequestVerifier
+    from donorpanel.graph.nodes import RequestVerifier
 
     chatty = ChattyAgent("verified", "interval respected")
     out = flow.run({"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"},
@@ -245,7 +245,7 @@ def test_structured_output_rescues_a_verifier_that_writes_no_json(repo):
 
 
 def test_the_reasoning_pass_sees_the_fact_sheet(repo):
-    from donorpanel.nodes import RequestVerifier
+    from donorpanel.graph.nodes import RequestVerifier
 
     chatty = ChattyAgent()
     flow.run({"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"},
@@ -254,7 +254,7 @@ def test_the_reasoning_pass_sees_the_fact_sheet(repo):
 
 
 def test_a_structured_rejection_still_closes_the_request(repo):
-    from donorpanel.nodes import RequestVerifier
+    from donorpanel.graph.nodes import RequestVerifier
 
     chatty = ChattyAgent("rejected", "duplicate of an open request")
     out = flow.run({"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"},

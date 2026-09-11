@@ -1,89 +1,54 @@
 # DonorPanel
 
-Multi-agent donor coordination for patients who need matched blood repeatedly, for life.
+**Asha finds blood donors, so families don't have to.**
 
-Patients with thalassemia, sickle cell disease and rare phenotypes need matched blood on a recurring basis. The pool of donors who can match them is systematically smaller than the population that needs them, because matching follows ancestry and donor registries do not mirror their patients. Registries are large but mostly unreachable, so the recruiting burden falls on families, permanently.
+Patients with thalassemia, sickle cell disease and rare phenotypes need matched blood on a recurring basis, often every three weeks, for life. The pool of donors who can match them is systematically smaller than the population that needs them, because matching follows ancestry and donor registries do not mirror their patients. Registries are large but mostly unreachable, so the recruiting burden falls on families, permanently.
 
 DonorPanel holds the donor network so no family has to browse it, and does the asking so no family has to.
 
-## Running the full stack
+The product is a Telegram agent. There is no dashboard to learn and no account to create: you message Asha and she does the rest.
 
-You need Python 3.10+, Node 18+, and AWS credentials for `ap-southeast-2`.
+## The three conversations
 
-```bash
-uv venv && uv pip install -e ".[dev]"
-cp .env.example .env          # then fill in the values below
-cd web && npm install && npm run build && cd ..
-uv run uvicorn donorpanel.api.app:app --port 8077
-```
+Asha works out which one you are from what you say.
 
-Open **http://127.0.0.1:8077**. FastAPI serves the built SPA from `web/dist`, so this one process is the whole app.
+| You | She |
+| --- | --- |
+| "My friend needs a transfusion in a week" | Gathers name, city, blood group, units and date, opens a request, searches the network, reports back |
+| "I'd like to help" | Registers you: name, city, blood group, consent. Geocodes your city so distance ranking works |
+| (answering her outreach) | Records your pledge or decline, tells you the hospital and date |
 
-### Working on the frontend
+## How a request actually moves
 
-For hot reload, run the API and Vite side by side. Vite proxies `/api` to port 8077, so **the backend must be on 8077** for this to work.
-
-```bash
-uv run uvicorn donorpanel.api.app:app --port 8077   # terminal 1
-cd web && npm run dev                               # terminal 2, opens :5173
-```
-
-### `.env`
-
-| Key | Needed for | Notes |
-| --- | --- | --- |
-| `AWS_REGION` | everything | `ap-southeast-2`. The account's SCP blocks S3 and EventBridge in `us-east-1`. |
-| `AWS_PROFILE` | everything | Or use ambient credentials. |
-| `BEDROCK_MODEL_ID` | the two agents | `apac.amazon.nova-pro-v1:0`. |
-| `DONORPANEL_BUCKET` | storage | Unset falls back to `data/local` on disk, which is enough to click around. |
-| `AGENTCORE_MEMORY_ID` | the memory panel | Unset disables memory cleanly; everything else still works. |
-| `COGNITO_POOL_ID`, `COGNITO_CLIENT_ID` | signed-in coordinators | Unset means every visitor is an anonymous sandbox. |
-
-Provision the AWS-side resources once:
-
-```bash
-uv run donorpanel init          # S3 bucket
-uv run donorpanel memory-init   # AgentCore Memory, ~3 min, prints the id for .env
-uv run donorpanel status        # confirms what is wired up
-```
-
-### What to click
-
-1. Press **Run request** under *New request*. The **Agent pipeline** canvas lights up node by node as the run streams. It takes 30 to 70 seconds, almost all of it model latency, so the per-node progress is the point rather than a spinner.
-2. A routine scheduled transfusion reads **Sent automatically**, with *Checks passed* listing what the gate verified: cohort covers the units, every donor inside their contact budget, nothing raised for review. Nobody was woken, which is the whole point.
-3. Now send one the agent should not handle alone. Set **Source** to `emergency` and run again. The **Autonomy decision** card flips to *Needs coordinator review* and lists why under *Escalation reasons*, including any reason the verifier raised in its own words. Type a name and press **Approve**.
-4. **Agent processes** on the right fills in as runs complete. A finding lands within seconds. A *Learned preference* needs a minute or more and at least two prior runs before a pattern exists to extract, then a refresh.
-5. Run a third time and open the **Node output** tab on the `compose` node. Its brief now carries `prior_context`, which is what the agent remembered from earlier runs.
-6. **Reset sandbox** in the header wipes your data and reseeds. Each browser profile gets its own sandbox, so two windows never see each other's requests.
-
-The detail tabs under the graph are **Cohort** (who was matched and why), **Drafts** (the outreach messages), **Node output** (raw JSON per node) and **Map** (donor geography).
-
-## How it works
-
-A Strands `Graph` of nine nodes. Only two are agents; everything that decides routing is deterministic code, which is deliberate.
+A Strands `Graph` of ten nodes. Only two are agents. **Everything that decides routing is deterministic code**, which is the point.
 
 ```
-intake -> verify -> adjudicate -+-> accept -> eligibility -> rank -> compose -> gate
+intake -> verify -> adjudicate -+-> accept -> eligibility -> rank -> compose -> gate -> dispatch
                                  \-> close
 ```
 
-- `verify` (agent) reads the request and the patient's transfusion history and returns a typed `Verdict` via structured output.
-- `adjudicate` (code) reads that verdict and fails closed. Routing never depends on model prose.
+- `verify` (agent) reads the request and the patient's history, returns a typed `Verdict` via structured output. It can also raise `needs_review` with a reason when a human should look.
+- `adjudicate` (code) turns that verdict into a branch and fails closed. Routing never depends on model prose.
 - `eligibility`, `rank` (code) apply the policy YAML: compatibility table, haversine distance, donation recency, contact budget.
 - `compose` (agent) writes one outreach draft per language and channel group.
 - `gate` (code) decides whether the run is routine enough to send without waking anyone.
+- `dispatch` (code) actually sends, and records delivery per donor.
 
-The verifier can also ask for a human without rejecting, by returning `needs_review` with a reason. That is the one place model judgment reaches the gate, and it arrives as a typed boolean persisted on the request, never as prose the gate has to interpret. What counts as required paperwork is a policy question, so deterministic code decides whether a prescription is needed and the agent only reads the answer.
+Graph edge conditions read JSON blocks out of node output, never free text.
 
-Conditions on the graph edges read JSON blocks out of node output, never free text.
+### The autonomy gate
+
+The gate is what makes this an agent rather than a workflow. A routine scheduled transfusion goes out on its own. It stops and asks a human when the request is an emergency, when the verifier raised something, when the matched cohort is too small for the units needed, when a donor is over their monthly contact budget, or when no drafts were produced.
+
+Escalation reasons are written for a coordinator, then translated into plain language before they reach whoever asked.
 
 ### Policies, not code
 
-`src/donorpanel/policies/*.yaml` carry the condition rules: transfusion interval, units per session, donation recency, cohort multiple, and the autonomy thresholds. `thalassemia-india` and `sickle-cell-uk` are the same product with different numbers, which is the point.
+`policies/*.yaml` carry the condition rules: transfusion interval, units per session, donation recency, cohort multiple, required paperwork and the autonomy thresholds. `thalassemia-india` and `sickle-cell-uk` are the same product with different numbers, which is the point.
 
 ### Memory
 
-AgentCore Memory, keyed on the actor, with two strategies:
+AgentCore Memory, keyed on the person, with two strategies:
 
 ```
 /donorpanel/{actorId}/shared/preferences/          userPreference
@@ -95,29 +60,90 @@ Writes take two paths on purpose, because they have very different latencies:
 | Path | API | Readable after |
 | --- | --- | --- |
 | Facts we already know exactly (cohort size, channels, gate decision) | `BatchCreateMemoryRecords` | **~1.5s** |
-| Patterns worth mining from the conversation | `CreateEvent` then async extraction | **~70s or longer** |
+| Patterns worth mining from conversation | `CreateEvent` then async extraction | **~70s** |
 
-So a **finding** appears in the panel within seconds of a run finishing, and a **preference** appears a minute or more later, when you hit refresh. Writing a record we already hold directly, instead of paying a model to re-derive it from a transcript, is also what the AWS cost guidance recommends.
+Writing a record we already hold, instead of paying a model to re-derive it from a transcript, is also what the AWS cost guidance recommends. On the next run `compose` reads that memory back with a single prefix query and folds it into its brief.
 
-On the next run, `compose` reads that memory back with a single prefix query and folds it into its brief as `prior_context` — click the `compose` node after a second run to see it.
+### The forecast
 
-`verify` writes but never reads. Feeding retrieved prose into the node that produces the routing verdict would trade away the determinism the rest of the design is built on.
+A patient on a fixed cycle is predictable. Last transfusion plus the policy interval is the next one, so a daily tick opens requests before anyone asks. This is deterministic code, not an agent. Patients with a request still pointing at a future date are skipped, or a daily tick would open a duplicate every day.
 
-### Security posture, stated honestly
+## Running it locally
 
-- **Namespaces are organization, not access control.** The real boundary AWS documents is an IAM condition on `bedrock-agentcore:actorId` bound to a per-user principal. One FastAPI process holding one credential for every visitor cannot have that. Actor scoping here is enforced by the application, not by IAM.
-- **Anonymous actor ids come from a client-supplied header.** `X-DonorPanel-Session` is a UUID the browser generates and persists. Good enough to give each visitor a private sandbox; not an authentication boundary. Under Cognito the actor is the token's `sub` claim and this caveat does not apply.
+You need Python 3.10+, Node 18+, and AWS credentials for `ap-southeast-2`.
+
+```bash
+uv venv && uv pip install -e ".[dev]"
+cp .env.example .env          # then fill in the values below
+cd web && npm install && npm run build && cd ..
+uv run uvicorn donorpanel.entrypoints.devserver:app --port 8077
+```
+
+Open **http://127.0.0.1:8077** for the landing page. The dev server also runs the Telegram poller, so messaging your bot works while it is up.
+
+Provision the AWS-side resources once:
+
+```bash
+uv run donorpanel init          # S3 bucket
+uv run donorpanel memory-init   # AgentCore Memory, ~3 min, prints the id for .env
+uv run donorpanel status        # confirms what is wired up
+```
+
+### `.env`
+
+| Key | Needed for | Notes |
+| --- | --- | --- |
+| `AWS_REGION` | everything | `ap-southeast-2`. The account's SCP blocks S3 in `us-east-1`. |
+| `BEDROCK_MODEL_ID` | the agents | `apac.amazon.nova-pro-v1:0`. |
+| `DONORPANEL_BUCKET` | storage | Unset falls back to `data/local` on disk. |
+| `AGENTCORE_MEMORY_ID` | memory | Unset disables memory cleanly; everything else still works. |
+| `TELEGRAM_BOT_TOKEN` | the product | From `@BotFather`. |
+| `TELEGRAM_BOT_USERNAME` | the landing page CTA | Without the `@`. |
+| `TELEGRAM_DEMO_CHAT_ID` | the demo pool | Seeded donors route here, so outreach reaches the operator rather than strangers. |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | access control | **Pinned to one chat id means nobody else can reach the bot.** Clear it before sharing. |
+| `TELEGRAM_WEBHOOK_SECRET` | deployment | Proves an inbound webhook came from Telegram. |
+| `SES_SENDER_EMAIL`, `SES_DEMO_EMAIL` | email outreach | Both the same verified address: SES sandbox only sends to verified recipients. |
+
+### Trying it
+
+1. Message your bot. Ask for blood for someone, or offer to donate.
+2. A request that clears the gate sends real Telegram messages, one per matched donor, each personalised by name and language.
+3. Reply as a donor. Asha records the pledge and the request tracks toward fulfilment.
+4. `uv run python -m donorpanel.services.forecast` shows what a scheduled tick would open today.
+
+## Deployment
+
+Serverless, in `ap-southeast-2`:
+
+```
+Telegram ──webhook──► API Gateway ──► Lambda ──► AgentCore Runtime (Asha)
+                                        └─────► itself, async (the request graph)
+EventBridge Scheduler ──daily──────► Lambda (forecast)
+CloudFront ──► S3 (landing page)
+```
+
+**Asha runs on AgentCore Runtime** because she is one agent, one request, one response, with a dedicated session per person. **The request graph runs in Lambda** because it is the opposite shape: ten nodes, thirty to seventy seconds, and nobody waiting. Using each service for what it is actually for.
+
+The webhook replaces a polling loop. Polling needs one process running forever, which is the opposite of what serverless is for; `poll()` survives only for local development where there is no public endpoint to point Telegram at.
+
+If AgentCore Runtime is unreachable, the Lambda answers in process with the identical code. A Runtime outage costs the architecture, not the demo.
+
+## Security and privacy, stated honestly
+
+- **Agent output never reaches logs.** `callback_handler=None` on every agent, because Strands prints reasoning to stdout by default and on Lambda stdout is CloudWatch. That would put donor names, dates of birth and blood groups into plaintext logs. A CloudWatch Logs data protection policy is the backstop.
+- **The bot token never reaches logs either.** httpx logs full request URLs at INFO and a Telegram URL carries the token in its path, so httpx is pinned to WARNING.
+- **Identity is federated from Telegram.** `from.id` identifies the speaker, `chat.id` is only where to reply. In a group those differ, and keying on the chat would give every member one shared identity and one shared memory.
+- **There is no authorization model.** Anyone who can reach the bot can open a request and cause real outreach. The webhook secret proves Telegram sent the message; it proves nothing about the human behind it. AgentCore Policy with Cedar rules at a Gateway is the right answer and is not built.
+- **Namespaces are organization, not access control.** The real boundary AWS documents is an IAM condition on `bedrock-agentcore:actorId` bound to a per-user principal. One process holding one credential cannot have that.
 - Aadhaar numbers are never stored. Verification discards them.
 
 ## Not built yet
 
-Honest list, so nothing here reads as more finished than it is.
-
-- **Nothing is actually sent.** The gate decides to dispatch and the drafts are real, but no email or Telegram message leaves the process. The channel interfaces exist; the delivery phase does not.
-- **Sign-in has no UI.** Cognito is wired and validated server side, so `Authorization: Bearer <token>` works, but the SPA never sends one. Every visitor is an anonymous sandbox.
-- **No CloudWatch alarms or memory log delivery.** The IAM policy grants it and the posture is decided, but the provisioning command is not written.
-- **The scheduled graph is not built.** Forecasting the next transfusion date and keeping the registry warm are the predictive half of the thesis and remain a design.
-- **`reset` cannot purge raw memory events** unless the IAM policy grants `bedrock-agentcore:ListSessions`. Without it the records are deleted and the underlying events survive; the call degrades quietly rather than failing the reset.
+- **No proof of personhood.** A Telegram account is free. For a system that dispatches people to hospitals, that is the gap.
+- **No cross-channel identity.** The same human on email and Telegram are two unrelated identities.
+- **Email is outbound only.** Receiving mail through SES needs a verified domain with MX records, so there is no email equivalent of the Telegram conversation.
+- **No evaluation harness.** Agent behaviour is covered by unit tests and stubs, not by scored evaluation runs.
+- **Cognito is gone.** It existed for a coordinator console that no longer exists.
 
 ## Development
 
@@ -126,18 +152,20 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-The suite avoids AWS: storage tests use moto or a temp directory, and both agents are stubbed. Tests that call Bedrock are skipped unless `DONORPANEL_LIVE=1`.
+The suite avoids AWS: storage tests use moto or a temp directory, agents are stubbed, and channel tests fake the Telegram transport. Tests that call Bedrock are skipped unless `DONORPANEL_LIVE=1`.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
-| `src/donorpanel/graphs` | The Strands graph: nodes, edges, conditions |
-| `src/donorpanel/nodes` | Node implementations, one class each |
-| `src/donorpanel/agents` | The two model-backed agents |
-| `src/donorpanel/policies` | Condition rules as YAML, not code |
-| `src/donorpanel/channels` | Outreach transports behind one interface |
-| `src/donorpanel/memory.py` | AgentCore Memory client |
-| `src/donorpanel/hooks.py` | Graph hook that writes a finished run to memory |
-| `src/donorpanel/api` | FastAPI, SSE streaming, serves the SPA |
-| `web/` | Vite, React, Tailwind v4, React Flow, Leaflet |
+| `entrypoints/` | How the outside gets in: `cli`, `lambda_fn`, `runtime`, `poller`, `devserver` |
+| `services/` | Application logic: `chat`, `outreach`, `forecast`, `pool`, `seed` |
+| `graph/` | The Strands graph: `flow`, `hooks`, and `nodes/` one class each |
+| `agents/` | The three model-backed agents: `assistant`, `composer`, `verifier` |
+| `tools/` | What Asha can actually do, bound per conversation |
+| `domain/` | Models and the matching rules. Depends on nothing else |
+| `adapters/` | How we reach the outside: `channels/`, `storage/`, `memory`, `geo` |
+| `policies/` | Condition rules as YAML, not code |
+| `web/` | The landing page: Vite, React, Tailwind v4 |
+
+Dependencies point inward. `entrypoints` and `adapters` know about `domain`; `domain` knows about neither.

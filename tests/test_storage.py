@@ -1,5 +1,6 @@
 import pytest
 
+from donorpanel.adapters.storage import PanelRepository
 from donorpanel.domain import (
     Component,
     Condition,
@@ -10,7 +11,6 @@ from donorpanel.domain import (
     Request,
     RequestStatus,
 )
-from donorpanel.storage import PanelRepository
 
 
 @pytest.fixture

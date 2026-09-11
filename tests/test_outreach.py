@@ -1,9 +1,9 @@
 import pytest
 
-from donorpanel import outreach
-from donorpanel.channels import Channel, DeliveryResult, Inbound
+from donorpanel.adapters.channels import Channel, DeliveryResult, Inbound
+from donorpanel.adapters.storage import FileStore, PanelRepository
 from donorpanel.domain import Contact, ContactStatus, Donor, Request, RequestStatus
-from donorpanel.storage import FileStore, PanelRepository
+from donorpanel.services import outreach
 
 DRAFTS = [
     {"language": "ta", "channel": "telegram", "subject": None, "body": "Vanakkam {name}, Ravi needs B+."},

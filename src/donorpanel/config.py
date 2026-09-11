@@ -23,6 +23,10 @@ class Config:
     ses_sender_email: str | None = field(default_factory=lambda: os.getenv("SES_SENDER_EMAIL") or None)
     ses_demo_email: str | None = field(default_factory=lambda: os.getenv("SES_DEMO_EMAIL") or None)
     bucket: str | None = field(default_factory=lambda: os.getenv("DONORPANEL_BUCKET") or None)
+    agentcore_runtime_arn: str | None = field(
+        default_factory=lambda: os.getenv("AGENTCORE_RUNTIME_ARN") or None)
+    telegram_webhook_secret: str | None = field(
+        default_factory=lambda: os.getenv("TELEGRAM_WEBHOOK_SECRET") or None)
     agentcore_memory_id: str | None = field(
         default_factory=lambda: os.getenv("AGENTCORE_MEMORY_ID") or None)
     cognito_pool_id: str | None = field(default_factory=lambda: os.getenv("COGNITO_POOL_ID") or None)

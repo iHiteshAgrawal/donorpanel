@@ -1,8 +1,8 @@
 import pytest
 
+from donorpanel.adapters.geo import GeocodeDenied, Geocoder, backfill, slug
+from donorpanel.adapters.storage import FileStore, PanelRepository
 from donorpanel.domain import Condition, Donor, Patient
-from donorpanel.geo import GeocodeDenied, Geocoder, backfill, slug
-from donorpanel.storage import FileStore, PanelRepository
 
 
 class StubPlaces:

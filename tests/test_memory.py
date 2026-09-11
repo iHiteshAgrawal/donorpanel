@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 from botocore.exceptions import ClientError
 
-from donorpanel import memory
+from donorpanel.adapters import memory
 
 
 def error(code: str) -> ClientError:

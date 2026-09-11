@@ -3,10 +3,10 @@ from types import SimpleNamespace
 import pytest
 from strands.hooks.events import AfterNodeCallEvent
 
-from donorpanel import hooks
-from donorpanel import seed as seeds
+from donorpanel.adapters.storage import FileStore, PanelRepository
 from donorpanel.domain import Contact, Request, RequestStatus
-from donorpanel.storage import FileStore, PanelRepository
+from donorpanel.graph import hooks
+from donorpanel.services import seed as seeds
 
 
 class Spy:

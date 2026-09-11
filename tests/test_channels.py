@@ -1,7 +1,7 @@
 import pytest
 
 from donorpanel import policies
-from donorpanel.channels import ConsoleChannel, Outbound
+from donorpanel.adapters.channels import ConsoleChannel, Outbound
 
 
 async def test_console_channel_delivers():
@@ -45,8 +45,8 @@ async def poll_with(monkeypatch, updates, allowed=()):
 
     import httpx
 
-    from donorpanel.channels import TelegramChannel
-    from donorpanel.channels import telegram as tg
+    from donorpanel.adapters.channels import TelegramChannel
+    from donorpanel.adapters.channels import telegram as tg
 
     # .env pins the allow list to the operator's own chat, which would drop every
     # fixture here.

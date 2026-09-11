@@ -1,7 +1,7 @@
 from strands import Agent
 from strands.models import BedrockModel
 
-from ..config import config
+from donorpanel.config import config
 
 SYSTEM_PROMPT = """You write the message a stranger receives asking them to
 donate blood. Getting the tone right is the whole job. Too formal and it reads
@@ -37,4 +37,8 @@ def build(model_override=None) -> Agent:
         model=model_override or BedrockModel(model_id=config.bedrock_model_id,
                                              region_name=config.aws_region),
         system_prompt=SYSTEM_PROMPT,
+        # Strands prints reasoning and replies to stdout by default. On Lambda and
+        # AgentCore Runtime stdout is CloudWatch, so that would write donor names,
+        # dates of birth and blood groups into plaintext logs.
+        callback_handler=None,
     )

@@ -15,7 +15,7 @@ def store(monkeypatch):
     monkeypatch.delenv("AWS_PROFILE", raising=False)
 
     with mock_aws():
-        from donorpanel.storage import ObjectStore
+        from donorpanel.adapters.storage import ObjectStore
 
         s3 = boto3.client("s3", region_name="us-east-1")
         s3.create_bucket(Bucket=BUCKET)

@@ -1,6 +1,6 @@
 from math import asin, cos, radians, sin, sqrt
 
-from .models import Donor, days_since
+from donorpanel.domain.models import Donor, days_since
 
 # Red cell compatibility for a recipient group. Plasma and platelets run the
 # opposite direction, so do not reuse this table for those components.

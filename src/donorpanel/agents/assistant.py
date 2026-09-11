@@ -1,8 +1,8 @@
 from strands import Agent
 from strands.models import BedrockModel
 
-from .. import tools
-from ..config import config
+from donorpanel import tools
+from donorpanel.config import config
 
 NAME = "Asha"
 
@@ -71,4 +71,8 @@ def build(model_override=None, session_manager=None) -> Agent:
         system_prompt=PROMPT,
         tools=tools.PUBLIC,
         session_manager=session_manager,
+        # Strands prints reasoning and replies to stdout by default. On Lambda and
+        # AgentCore Runtime stdout is CloudWatch, so that would write donor names,
+        # dates of birth and blood groups into plaintext logs.
+        callback_handler=None,
     )
