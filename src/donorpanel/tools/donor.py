@@ -7,8 +7,13 @@ from ..domain.matching import ineligible_reason
 
 
 def _ctx(tool_context: ToolContext):
+    """Resolve the donor from whoever is talking. Doing it here rather than up front
+    means someone who registers mid-conversation is immediately recognised."""
     state = tool_context.invocation_state
-    return state["repo"], state.get("donor_id")
+    repo = state["repo"]
+    sender = str(state.get("sender") or "")
+    donor = next((d for d in repo.list_donors() if d.address == sender), None)
+    return repo, (donor.donor_id if donor else None)
 
 
 ASKED = (ContactStatus.SENT, ContactStatus.PLEDGED, ContactStatus.DECLINED)

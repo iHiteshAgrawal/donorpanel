@@ -3,47 +3,24 @@ import logging
 
 from . import chat, public
 from .channels import Outbound, registry
-from .domain import ContactStatus
 
 log = logging.getLogger(__name__)
 
 POLL_SECONDS = 3
 
 
-def open_contact_for(repo, address: str):
-    """A donor in the pool who was sent a message and has not answered."""
-    for request in repo.in_flight():
-        for contact in repo.list_contacts(request.request_id):
-            if contact.status is not ContactStatus.SENT:
-                continue
-            donor = repo.get_donor(contact.donor_id)
-            if donor and donor.address == address:
-                return donor
-    return None
-
-
-def locate(address: str):
-    panel = public.ensure()
-    return panel, open_contact_for(panel, address)
-
-
 async def handle(message, channels) -> str | None:
-    repo, donor = locate(message.sender)
-    if donor is not None:
-        answer = await asyncio.to_thread(
-            chat.reply, repo, message.body, kind=chat.DONOR,
-            donor_id=donor.donor_id, sender=message.sender, channel=message.channel)
-    else:
-        # Nobody is waiting on them, so this is someone curious, wanting to join, or
-        # asking for blood. The public persona works out which.
-        launch: dict = {}
-        answer = await asyncio.to_thread(
-            chat.reply, public.ensure(), message.body, kind=chat.VISITOR,
-            sender=message.sender, channel=message.channel, carry=launch)
+    """Everyone gets the same Asha. What she can do for them depends on their own
+    records, not on which door they came through."""
+    launch: dict = {}
+    answer = await asyncio.to_thread(
+        chat.reply, public.ensure(), message.body,
+        sender=str(message.sender), channel=message.channel, carry=launch)
+
     channel = channels.get(message.channel)
     if channel:
         await channel.send(Outbound(recipient=message.sender, body=answer))
-    if donor is None and launch.get("launch"):
+    if launch.get("launch"):
         # After the reply, never before: the graph takes most of a minute.
         asyncio.create_task(search(launch["launch"], message, channel))
     return answer

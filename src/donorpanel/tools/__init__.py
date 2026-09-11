@@ -3,12 +3,18 @@ from .history import request_history
 from .request import request_progress, start_request
 from .visitor import am_i_registered, register_donor, who_needs_blood
 
-PUBLIC = [who_needs_blood, am_i_registered, register_donor,
-          start_request, request_progress]
-DONOR = [my_request, record_answer, my_eligibility]
+PUBLIC = [
+    who_needs_blood,
+    am_i_registered,
+    register_donor,
+    start_request,
+    request_progress,
+    my_request,
+    record_answer,
+    my_eligibility,
+]
 
 __all__ = [
-    "DONOR",
     "PUBLIC",
     "am_i_registered",
     "my_eligibility",
