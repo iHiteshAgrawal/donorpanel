@@ -28,6 +28,14 @@ class StubVerifier(JsonNode):
                 "needs_review": self.needs_review, "review_reason": self.review_reason}
 
 
+def wired():
+    """The seeded pool is on telegram, which is not configured in tests."""
+    from donorpanel.channels import ConsoleChannel
+
+    sender = ConsoleChannel()
+    return {"telegram": sender, "email": sender, "console": sender}
+
+
 @pytest.fixture
 def repo(tmp_path):
     repo = PanelRepository(store=FileStore(tmp_path))
@@ -53,9 +61,10 @@ class StubComposer:
 
 
 def ask(repo, verdict, reason="stub", composer=None, needs_review=False,
-        review_reason=None, **overrides):
+        review_reason=None, channels=None, **overrides):
     stub = StubVerifier(verdict, reason, needs_review, review_reason)
-    graph = flow.build(agent=stub, composer_agent=composer or StubComposer())
+    graph = flow.build(agent=stub, composer_agent=composer or StubComposer(),
+                       channels=channels if channels is not None else wired())
     raw = {"patient_id": "p-ravi", "units_needed": 2, "needed_by": "2026-10-01"}
     raw.update(overrides)
     return flow.run(raw, repo=repo, graph=graph), stub
@@ -324,6 +333,7 @@ def test_a_routine_repeat_request_is_sent_without_waking_anyone(repo):
     assert out["gate"]["decided_by"] == "policy"
     assert repo.get_request(out["request_id"]).status == RequestStatus.DISPATCHED
     assert repo.get_approval(out["request_id"])["by"] == "agent"
+    assert out["dispatch"]["delivered_count"] == 6
 
 
 def test_an_emergency_always_escalates(repo):

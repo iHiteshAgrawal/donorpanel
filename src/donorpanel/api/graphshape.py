@@ -17,6 +17,8 @@ NODES = [
      "phase": "3 Approve", "detail": "Drafts one message per language and channel"},
     {"id": "gate", "label": "AutonomyGate", "kind": "gate",
      "phase": "3 Approve", "detail": "Decides if this run is routine enough to send without waking anyone"},
+    {"id": "dispatch", "label": "Dispatch", "kind": "deterministic",
+     "phase": "4 Deliver", "detail": "Sends each donor their message and records delivery"},
 ]
 
 EDGES = [
@@ -28,4 +30,5 @@ EDGES = [
     {"source": "eligibility", "target": "rank"},
     {"source": "rank", "target": "compose", "label": "cohort found"},
     {"source": "compose", "target": "gate"},
+    {"source": "gate", "target": "dispatch", "label": "cleared to send"},
 ]

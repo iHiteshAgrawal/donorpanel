@@ -6,6 +6,7 @@ import { HeroSection } from './components/HeroSection'
 import { Cohort, Drafts, NodeOutput, RequestRow } from './components/Inspector'
 import { LiveStatus } from './components/LiveStatus'
 import { Memory } from './components/Memory'
+import { Outreach } from './components/Outreach'
 import { OutcomeCard } from './components/OutcomeCard'
 import { Badge, Button, Empty, Field, Icon, Panel, inputClass } from './components/ui'
 import type {
@@ -15,7 +16,7 @@ import type {
 
 /* ── Detail tab names ──────────────────────────────────────── */
 
-const DETAIL_TABS = ['Cohort', 'Drafts', 'Node output', 'Map'] as const
+const DETAIL_TABS = ['Cohort', 'Outreach', 'Drafts', 'Node output', 'Map'] as const
 type DetailTab = (typeof DETAIL_TABS)[number]
 
 /* ── App ───────────────────────────────────────────────────── */
@@ -150,7 +151,10 @@ export default function App() {
               return next
             }),
           onDone: (data) => {
-            setDetail(data.detail as RequestDetail)
+            const finished = data.detail as RequestDetail
+            setDetail(finished)
+            // Land on the tab that shows what the agent actually did.
+            if (finished?.contacts?.some((c) => c.contacted_at)) setDetailTab('Outreach')
             setState('done')
             setStartedAt(null)
             // Extract verdict from the done event
@@ -504,7 +508,8 @@ export default function App() {
                 }
               >
                 {detailTab === 'Cohort' && <Cohort detail={detail} donors={donors} />}
-                {detailTab === 'Drafts' && <Drafts detail={detail} />}
+                {detailTab === 'Outreach' && <Outreach detail={detail} donors={donors} />}
+              {detailTab === 'Drafts' && <Drafts detail={detail} />}
                 {detailTab === 'Node output' && (
                   <div>
                     {/* Node selector */}

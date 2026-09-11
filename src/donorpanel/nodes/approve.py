@@ -145,7 +145,6 @@ class AutonomyGate(JsonNode):
             }
 
         repo.approve(request_id, by="agent", note="routine, met every autonomy condition")
-        repo.set_status(request_id, RequestStatus.DISPATCHED)
         return {
             "request_id": request_id, "gate": "auto", "decided_by": "policy",
             "checks_passed": ["scheduled request", "verifier raised nothing for review",

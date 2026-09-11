@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from .config import config
 from .domain import Condition, Donor, Patient
 
 PATIENT = {
@@ -34,6 +35,14 @@ def is_empty(repo) -> bool:
     return not repo.store.keys("patients/")
 
 
+def address_for(channel: str, donor_id: str) -> str:
+    """Demo donors are fictional, so their telegram messages route to the operator's
+    own chat. The Bot API call and its receipt are real; only the recipient is shared."""
+    if channel == "telegram" and config.telegram_demo_chat_id:
+        return config.telegram_demo_chat_id
+    return f"{donor_id}@example.test"
+
+
 def populate(repo, coordinates: dict[str, tuple[float, float]] | None = None) -> int:
     """Write the demo patient and donor pool into whichever namespace repo holds."""
     coordinates = coordinates or {}
@@ -43,7 +52,7 @@ def populate(repo, coordinates: dict[str, tuple[float, float]] | None = None) ->
         lat, lon = coordinates.get(city, (None, None))
         repo.put_donor(Donor(
             donor_id=donor_id, name=name, blood_group=group, region="IN-TN",
-            channel=channel, address=f"{donor_id}@example.test", city=city,
+            channel=channel, address=address_for(channel, donor_id), city=city,
             consent=consent, last_donation=ago(last), language="ta",
             contacts_this_month=contacts, lat=lat, lon=lon))
     return len(POOL)

@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .. import auth, memory
+from .. import auth, memory, outreach
 from .. import seed as seeds
 from ..auth import Actor
 from ..config import config
@@ -131,7 +131,8 @@ def detail(request_id: str, actor: Actor = Depends(current_actor)) -> dict:
         "rejection_reason": request.rejection_reason,
         "created_at": request.created_at,
         "contacts": [{"rank": c.rank, "donor_id": c.donor_id, "channel": c.channel,
-                      "status": c.status.value} for c in contacts],
+                      "status": c.status.value, "contacted_at": c.contacted_at,
+                      "note": c.note, "body": c.body} for c in contacts],
         "drafts": store.get_drafts(request_id),
         "approval": approval,
     }
@@ -144,6 +145,9 @@ def approve(request_id: str, body: Approval, actor: Actor = Depends(current_acto
         raise HTTPException(404, f"no request {request_id}")
     store.approve(request_id, by=body.by if not actor.authenticated else actor.name,
                   note=body.note)
+    # Approving is the coordinator saying send it. Without this the request sat at
+    # awaiting_approval forever and nothing ever left the process.
+    outreach.deliver(store, request_id)
     return detail(request_id, actor)
 
 
@@ -210,6 +214,7 @@ async def run_stream(body: NewRequest, actor: Actor = Depends(current_actor)) ->
             "eligibility": find_block(blob, "eligible_count"),
             "cohort": find_block(blob, "cohort_size"),
             "gate": find_block(blob, "gate"),
+            "dispatch": find_block(blob, "delivered_count"),
             "detail": detail(request_id, actor),
         })
 

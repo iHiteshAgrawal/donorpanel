@@ -9,6 +9,7 @@ from ..nodes import (
     AutonomyGate,
     CloseRejected,
     CohortRanker,
+    Dispatch,
     EligibilityResolver,
     IntakeNormalizer,
     MarkVerified,
@@ -31,11 +32,15 @@ def is_rejected(state) -> bool:
     return _verdict(state) == "rejected"
 
 
+def is_cleared(state) -> bool:
+    return find_block(node_text(state, "gate"), "gate").get("gate") in ("auto", "approved")
+
+
 def has_cohort(state) -> bool:
     return find_block(node_text(state, "rank"), "cohort_size").get("cohort_size", 0) > 0
 
 
-def build(agent=None, composer_agent=None, session_manager=None, hooks=None):
+def build(agent=None, composer_agent=None, session_manager=None, hooks=None, channels=None):
     builder = GraphBuilder()
     builder.add_node(IntakeNormalizer(), "intake")
     builder.add_node(agent or RequestVerifier(), "verify")
@@ -46,6 +51,7 @@ def build(agent=None, composer_agent=None, session_manager=None, hooks=None):
     builder.add_node(CohortRanker(), "rank")
     builder.add_node(OutreachComposer(agent=composer_agent), "compose")
     builder.add_node(AutonomyGate(), "gate")
+    builder.add_node(Dispatch(channels=channels), "dispatch")
 
     builder.add_edge("intake", "verify")
     builder.add_edge("verify", "adjudicate")
@@ -55,9 +61,10 @@ def build(agent=None, composer_agent=None, session_manager=None, hooks=None):
     builder.add_edge("eligibility", "rank")
     builder.add_edge("rank", "compose", condition=has_cohort)
     builder.add_edge("compose", "gate")
+    builder.add_edge("gate", "dispatch", condition=is_cleared)
 
     builder.set_entry_point("intake")
-    builder.set_max_node_executions(12)
+    builder.set_max_node_executions(14)
     builder.set_execution_timeout(180)
     builder.set_node_timeout(90)
     if session_manager is not None:
@@ -89,5 +96,6 @@ def run(raw: dict[str, Any], repo: PanelRepository | None = None, graph=None,
         "cohort": find_block(text, "cohort_size"),
         "drafts": find_block(text, "draft_count"),
         "gate": find_block(text, "gate"),
+        "dispatch": find_block(text, "delivered_count"),
         "autonomy": find_block(text, "decided_by"),
     }

@@ -52,6 +52,9 @@ export interface Contact {
   donor_id: string
   channel: string | null
   status: string
+  contacted_at: string | null
+  note: string | null
+  body: string | null
 }
 
 export interface RequestDetail {

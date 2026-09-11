@@ -40,6 +40,8 @@ class RequestStatus(str, Enum):
 
 class ContactStatus(str, Enum):
     PENDING = "pending"
+    SENT = "sent"
+    UNREACHABLE = "unreachable"
     PLEDGED = "pledged"
     DECLINED = "declined"
     NO_RESPONSE = "no_response"
@@ -120,6 +122,7 @@ class Contact:
     contacted_at: str | None = None
     responded_at: str | None = None
     note: str | None = None
+    body: str | None = None
 
     def __post_init__(self) -> None:
         self.status = ContactStatus(self.status)
