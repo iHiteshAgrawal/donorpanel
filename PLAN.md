@@ -76,3 +76,34 @@ SCP blocked**, they only need identity based grants.
 This is meaningful new surface with three days left. **Steps 1 and 2 rescue the
 demo; steps 3 and 4 score.** If something has to give, memory is easier to cut
 than identity.
+
+## Step 3 results (2026-09-11)
+
+Memory `DonorPanelMemory-RR8rz7BcLM` is live in ap-southeast-2. No IAM change was
+needed; the existing policy already allowed `CreateMemory`.
+
+```
+/donorpanel/{actorId}/shared/preferences/          userPreference  CoordinatorPreferences
+/donorpanel/{actorId}/agents/{agentid}/findings/   semantic        AgentFindings
+namespaceKeys: agentid in (verify|compose|forecast|hygiene)
+```
+
+Measured, not assumed:
+
+| | |
+| --- | --- |
+| `batch_create_memory_records` then semantic recall | **1.5s**, both records returned |
+| `create_event` then extracted preference surfaced | **72.6s** |
+| `namespacePath` prefix query | returned all 4 records across both subtrees in one call |
+| Resolved namespace | matched the template character for character |
+
+Two things step 4 depends on:
+
+- **Direct records are semantically searchable immediately.** The deterministic write
+  path works, so nothing in the demo waits on extraction.
+- **Record text differs by strategy.** Extracted preferences are JSON
+  (`{context, preference, categories}`); records we write are prose. `memory._readable`
+  normalises both to one display string.
+
+The `{agentid}` key means `forecast` and `hygiene` can write to this same resource
+later without recreating it.

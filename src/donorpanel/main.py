@@ -11,6 +11,7 @@ def status() -> None:
     print(f"donorpanel {__version__}  env={config.env}  region={config.aws_region}")
     print(f"model: {config.bedrock_model_id or 'sdk default'}")
     print(f"storage: {'s3://' + config.bucket if config.bucket else config.local_root}")
+    print(f"memory: {config.agentcore_memory_id or 'not provisioned'}")
     print(f"channels: {', '.join(active) or 'none'}")
     print(f"policies: {', '.join(policies.available())}")
 
@@ -26,52 +27,20 @@ def init() -> None:
 
 
 def reset() -> None:
-    from .storage import store
+    from . import seed as seeds
+    from .storage import PanelRepository
 
-    backing = store()
-    removed = 0
-    for prefix in ("requests/", "contacts/", "patient-requests/", "drafts/",
-                   "approvals/", "donors/", "pool/", "patients/", "credits/"):
-        for key in backing.keys(prefix):
-            backing.delete(key)
-            removed += 1
-    print(f"cleared {removed} objects")
+    print(f"cleared {seeds.wipe(PanelRepository())} objects")
 
 
 def seed() -> None:
-    from datetime import datetime, timedelta, timezone
-
-    from .domain import Condition, Donor, Patient
+    from . import seed as seeds
     from .storage import PanelRepository
-
-    def ago(days: int) -> str:
-        return (datetime.now(timezone.utc).date() - timedelta(days=days)).isoformat()
 
     init()
     repo = PanelRepository()
-    repo.put_patient(Patient(
-        patient_id="p-ravi", name="Ravi", condition=Condition.THALASSEMIA,
-        blood_group="B+", policy_id="thalassemia-india", region="IN-TN",
-        city="Coimbatore", hospital="Government Hospital",
-    ))
-    pool = [
-        ("d-asha", "Asha", "B+", "telegram", True, ago(160), "Coimbatore", 0),
-        ("d-vikram", "Vikram", "B+", "email", True, ago(20), "Coimbatore", 0),
-        ("d-meera", "Meera", "O-", "telegram", True, None, "Tiruppur", 0),
-        ("d-suresh", "Suresh", "B+", "telegram", False, ago(400), "Coimbatore", 0),
-        ("d-kavya", "Kavya", "O+", "telegram", True, ago(210), "Erode", 3),
-        ("d-arun", "Arun", "B-", "email", True, ago(120), "Chennai", 0),
-        ("d-divya", "Divya", "A+", "telegram", True, ago(300), "Coimbatore", 0),
-        ("d-nithya", "Nithya", "B+", "telegram", True, ago(95), "Pollachi", 1),
-    ]
-    for donor_id, name, group, channel, consent, last, city, contacts in pool:
-        repo.put_donor(Donor(
-            donor_id=donor_id, name=name, blood_group=group, region="IN-TN",
-            channel=channel, address=f"{donor_id}@example.test", city=city,
-            consent=consent, last_donation=last, language="ta",
-            contacts_this_month=contacts,
-        ))
-    print(f"seeded 1 patient and {len(pool)} donors, no coordinates")
+    count = seeds.populate(repo)
+    print(f"seeded 1 patient and {count} donors, no coordinates")
     print("run 'donorpanel geocode' to resolve their cities")
 
 
@@ -133,6 +102,15 @@ def pending() -> None:
                 print(f"      {line}")
 
 
+def memory_init() -> None:
+    from . import memory
+
+    memory_id = memory.ensure()
+    print(f"memory {memory_id} ready")
+    if config.agentcore_memory_id != memory_id:
+        print(f"add this to .env:\n  AGENTCORE_MEMORY_ID={memory_id}")
+
+
 async def ping(channel: str, recipient: str, body: str) -> None:
     active = registry()
     if channel not in active:
@@ -149,6 +127,7 @@ def main() -> None:
     sub.add_parser("seed")
     sub.add_parser("reset")
     sub.add_parser("geocode")
+    sub.add_parser("memory-init")
     sub.add_parser("pending")
 
     ok = sub.add_parser("approve")
@@ -177,6 +156,8 @@ def main() -> None:
         reset()
     elif args.command == "geocode":
         geocode()
+    elif args.command == "memory-init":
+        memory_init()
     elif args.command == "pending":
         pending()
     elif args.command == "approve":
