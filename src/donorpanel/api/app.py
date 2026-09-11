@@ -10,12 +10,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .. import auth
+from .. import auth, memory
 from .. import seed as seeds
 from ..auth import Actor
 from ..config import config
 from ..domain import RequestStatus
 from ..graphs import request as flow
+from ..hooks import MemoryWriter
 from ..nodes.base import find_block
 from ..storage import PanelRepository, store
 from .graphshape import EDGES, NODES
@@ -150,8 +151,15 @@ def approve(request_id: str, body: Approval, actor: Actor = Depends(current_acto
 def reset_sandbox(actor: Actor = Depends(current_actor)) -> dict:
     scoped = PanelRepository(store=store(actor.prefix))
     removed = seeds.wipe(scoped)
+    forgotten = memory.forget(actor.actor_id)
     seeds.populate(scoped, seeds.coordinates_from(PanelRepository()))
-    return {"actor_id": actor.actor_id, "cleared": removed, "reseeded": True}
+    return {"actor_id": actor.actor_id, "cleared": removed,
+            "forgotten": forgotten, "reseeded": True}
+
+
+@app.get("/api/memory")
+def remembered(actor: Actor = Depends(current_actor)) -> list[dict]:
+    return memory.catalogue(actor.actor_id)
 
 
 @app.get("/api/pending")
@@ -166,13 +174,14 @@ async def run_stream(body: NewRequest, actor: Actor = Depends(current_actor)) ->
 
     async def events():
         store = repo(actor)
-        graph = flow.build()
+        graph = flow.build(hooks=[MemoryWriter()])
         yield sse("started", {"request_id": request_id, "raw": raw})
         collected: list[str] = []
         try:
             async for event in graph.stream_async(
                 json.dumps(raw),
-                invocation_state={"repo": store, "request_id": request_id, "raw": raw},
+                invocation_state={"repo": store, "request_id": request_id, "raw": raw,
+                                  "actor_id": actor.actor_id},
             ):
                 kind = event.get("type")
                 if kind == "multiagent_node_start":

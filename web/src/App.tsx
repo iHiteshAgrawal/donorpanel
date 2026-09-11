@@ -3,9 +3,10 @@ import { api, runRequest } from './api'
 import { CohortMap } from './components/CohortMap'
 import { GraphCanvas } from './components/GraphCanvas'
 import { Approval, Cohort, NodeOutput, RequestRow } from './components/Inspector'
+import { Memory } from './components/Memory'
 import { Button, Empty, Field, inputClass, Panel } from './components/ui'
 import type {
-  Donor, GraphEdgeSpec, GraphNodeSpec, NodeRun, Patient, RequestDetail, RunState,
+  Donor, GraphEdgeSpec, GraphNodeSpec, MemoryRecord, NodeRun, Patient, RequestDetail, RunState,
 } from './types'
 
 const TABS = ['Output', 'Cohort', 'Drafts'] as const
@@ -17,6 +18,8 @@ export default function App() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [donors, setDonors] = useState<Donor[]>([])
   const [requests, setRequests] = useState<RequestDetail[]>([])
+  const [memory, setMemory] = useState<MemoryRecord[]>([])
+  const [recalling, setRecalling] = useState(false)
 
   const [runs, setRuns] = useState<Record<string, NodeRun>>({})
   const [activeEdges, setActiveEdges] = useState<Set<string>>(new Set())
@@ -44,10 +47,20 @@ export default function App() {
     void api.health().then(setHealth).catch(fail)
     void api.donors().then(setDonors).catch(fail)
     void api.requests().then(setRequests).catch(fail)
+    void api.memory().then(setMemory).catch(fail)
     void api.patients().then((pats) => {
       setPatients(pats)
       if (pats[0]) setPatientId(pats[0].patient_id)
     }).catch(fail)
+  }, [])
+
+  const recall = useCallback(async () => {
+    setRecalling(true)
+    try {
+      setMemory(await api.memory())
+    } catch { /* an empty panel beats a broken one */ } finally {
+      setRecalling(false)
+    }
   }, [])
 
   const refresh = useCallback(async () => {
@@ -86,6 +99,7 @@ export default function App() {
             setState('done')
             setTab('Drafts')
             void refresh()
+            void recall()
           },
           onFailed: (message) => {
             setError(message)
@@ -97,7 +111,7 @@ export default function App() {
       setError(String(exc))
       setState('failed')
     }
-  }, [patientId, neededBy, units, spec.nodes, refresh])
+  }, [patientId, neededBy, units, spec.nodes, refresh, recall])
 
   const open = useCallback(async (id: string) => {
     try {
@@ -234,7 +248,20 @@ export default function App() {
             {tab === 'Drafts' && <Approval detail={detail} onApprove={(by) => void approve(by)} busy={approving} />}
           </Panel>
 
-          <Panel title="Donor geography" className="h-64 shrink-0">
+          <Panel
+            title="Agent memory"
+            className="h-56 shrink-0"
+            action={
+              <button onClick={() => void recall()} disabled={recalling}
+                      className="rounded px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-ink-400 transition-colors hover:text-ink-200 disabled:opacity-40">
+                {recalling ? 'reading' : 'refresh'}
+              </button>
+            }
+          >
+            <Memory records={memory} />
+          </Panel>
+
+          <Panel title="Donor geography" className="h-56 shrink-0">
             <CohortMap patient={patient} donors={donors} cohortIds={cohortIds} />
           </Panel>
         </div>

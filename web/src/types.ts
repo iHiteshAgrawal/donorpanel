@@ -84,3 +84,10 @@ export interface Actor {
   authenticated: boolean
   namespace: string
 }
+
+export interface MemoryRecord {
+  text: string
+  kind: 'preference' | 'finding'
+  namespace: string
+  score: number | null
+}

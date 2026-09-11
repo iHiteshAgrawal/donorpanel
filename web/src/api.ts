@@ -1,5 +1,5 @@
 import { headers } from './session'
-import type { Actor, Donor, GraphEdgeSpec, GraphNodeSpec, Patient, RequestDetail } from './types'
+import type { Actor, Donor, MemoryRecord, GraphEdgeSpec, GraphNodeSpec, Patient, RequestDetail } from './types'
 
 async function get<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: headers() })
@@ -16,6 +16,7 @@ export const api = {
   detail: (id: string) => get<RequestDetail>(`/api/requests/${id}`),
   stats: () => get<{ requests: number; awaiting_approval: number; donors: number }>('/api/stats'),
   me: () => get<Actor>('/api/me'),
+  memory: () => get<MemoryRecord[]>('/api/memory'),
 
   resetSandbox: async () => {
     const response = await fetch('/api/sandbox/reset', { method: 'POST', headers: headers() })

@@ -169,14 +169,86 @@ def recall(actor_id: str, agent_id: str, query: str, top_k: int = 3,
 
 def everything(actor_id: str, query: str = "what is known about this coordinator",
                top_k: int = 20, client=None) -> list[str]:
+    return [row["text"] for row in catalogue(actor_id, query, top_k, client)]
+
+
+def catalogue(actor_id: str, query: str = "what is known about this coordinator",
+              top_k: int = 20, client=None) -> list[dict[str, Any]]:
+    """Same prefix query as everything(), keeping the namespace so callers can tell a
+    preference the service extracted from a finding we wrote ourselves."""
     if not config.agentcore_memory_id:
         return []
     try:
-        return _hits((client or data()).retrieve_memory_records(
+        response = (client or data()).retrieve_memory_records(
             memoryId=config.agentcore_memory_id,
             namespacePath=ROOT.format(actorId=actor_id),
             searchCriteria={"searchQuery": query, "topK": top_k},
-        ))
+        )
     except ClientError as exc:
-        _degrade("everything", exc)
+        _degrade("catalogue", exc)
         return []
+
+    rows = []
+    for hit in response.get("memoryRecordSummaries", []):
+        text = hit.get("content", {}).get("text")
+        if not text:
+            continue
+        namespace = (hit.get("namespaces") or [""])[0]
+        rows.append({
+            "text": _readable(text),
+            "kind": "preference" if "/preferences/" in namespace else "finding",
+            "namespace": namespace,
+            "score": hit.get("score"),
+        })
+    return rows
+
+
+def forget(actor_id: str, client=None) -> int:
+    """Clears one actor's memory. Records alone are not enough: raw events live
+    independently for eventExpiryDuration and stay readable through ListEvents."""
+    if not config.agentcore_memory_id:
+        return 0
+    api = client or data()
+    mid = config.agentcore_memory_id
+    removed = 0
+    # Broader than ClientError on purpose. A malformed call raises
+    # ParamValidationError, which is not a ClientError, and a wipe that cannot
+    # reach AWS must still leave the sandbox reset working.
+    try:
+        for namespace in (preferences_ns(actor_id),
+                          *(findings_ns(actor_id, agent) for agent in AGENTS)):
+            ids = [record["memoryRecordId"]
+                   for record in _pages(api.list_memory_records, "memoryRecordSummaries",
+                                        memoryId=mid, namespace=namespace)]
+            for start in range(0, len(ids), 100):
+                chunk = ids[start:start + 100]
+                api.batch_delete_memory_records(
+                    memoryId=mid, records=[{"memoryRecordId": i} for i in chunk])
+                removed += len(chunk)
+
+        # ListEvents needs a sessionId, so the actor's sessions have to be
+        # enumerated first; there is no list-events-by-actor call.
+        for session in _pages(api.list_sessions, "sessionSummaries",
+                              memoryId=mid, actorId=actor_id):
+            session_id = session["sessionId"]
+            for event in _pages(api.list_events, "events", memoryId=mid,
+                                actorId=actor_id, sessionId=session_id):
+                api.delete_event(memoryId=mid, actorId=actor_id,
+                                 sessionId=session_id, eventId=event["eventId"])
+                removed += 1
+    except ClientError as exc:
+        _degrade("forget", exc)
+    except Exception:
+        log.warning("memory forget failed for %s", actor_id, exc_info=True)
+    return removed
+
+
+def _pages(call, key: str, **kwargs) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    token = None
+    while True:
+        page = call(**kwargs, maxResults=100, **({"nextToken": token} if token else {}))
+        found.extend(page.get(key, []))
+        token = page.get("nextToken")
+        if not token:
+            return found

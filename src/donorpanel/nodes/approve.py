@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .. import policies
+from .. import memory, policies
 from ..agents import composer
 from ..domain import RequestSource, RequestStatus
 from .base import JsonNode, find_block, task_text
@@ -51,6 +51,14 @@ class OutreachComposer(JsonNode):
             "groups": [{"language": lang, "channel": channel, "donors": count}
                        for (lang, channel), count in sorted(groups.items())],
         }
+        actor_id = invocation_state.get("actor_id")
+        if actor_id:
+            prior = memory.everything(
+                actor_id,
+                query=f"outreach tone and coordinator preferences for {patient.name}",
+                top_k=5)
+            if prior:
+                brief["prior_context"] = prior
         if not groups:
             return {"request_id": request.request_id, "drafts": [],
                     "problem": "no contacts to write to"}

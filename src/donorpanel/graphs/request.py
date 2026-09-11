@@ -35,7 +35,7 @@ def has_cohort(state) -> bool:
     return find_block(node_text(state, "rank"), "cohort_size").get("cohort_size", 0) > 0
 
 
-def build(agent=None, composer_agent=None, session_manager=None):
+def build(agent=None, composer_agent=None, session_manager=None, hooks=None):
     builder = GraphBuilder()
     builder.add_node(IntakeNormalizer(), "intake")
     builder.add_node(agent or RequestVerifier(), "verify")
@@ -62,18 +62,21 @@ def build(agent=None, composer_agent=None, session_manager=None):
     builder.set_node_timeout(90)
     if session_manager is not None:
         builder.set_session_manager(session_manager)
+    if hooks:
+        builder.set_hook_providers(hooks)
     return builder.build()
 
 
 def run(raw: dict[str, Any], repo: PanelRepository | None = None, graph=None,
-        request_id: str | None = None) -> dict[str, Any]:
+        request_id: str | None = None, actor_id: str | None = None) -> dict[str, Any]:
     repo = repo or PanelRepository()
     request_id = request_id or f"r-{uuid.uuid4().hex[:10]}"
     graph = graph or build()
 
     result = graph(
         json.dumps(raw),
-        invocation_state={"repo": repo, "request_id": request_id, "raw": raw},
+        invocation_state={"repo": repo, "request_id": request_id, "raw": raw,
+                          "actor_id": actor_id},
     )
     text = str(result)
     return {
