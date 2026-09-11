@@ -84,6 +84,7 @@ class Patient:
     lon: float | None = None
     coordinator_channel: str | None = None
     coordinator_address: str | None = None
+    dob: str | None = None
 
     def __post_init__(self) -> None:
         self.condition = Condition(self.condition)

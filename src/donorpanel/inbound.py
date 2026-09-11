@@ -50,14 +50,63 @@ async def handle(message, channels) -> str | None:
             chat.reply, repo, message.body, kind=chat.DONOR,
             donor_id=donor.donor_id, sender=message.sender, channel=message.channel)
     else:
-        # Nobody is waiting on them, so this is someone curious or wanting to join.
+        # Nobody is waiting on them, so this is someone curious, wanting to join, or
+        # asking for blood. The public persona works out which.
+        launch: dict = {}
         answer = await asyncio.to_thread(
             chat.reply, public.ensure(), message.body, kind=chat.VISITOR,
-            sender=message.sender, channel=message.channel)
+            sender=message.sender, channel=message.channel, carry=launch)
     channel = channels.get(message.channel)
     if channel:
         await channel.send(Outbound(recipient=message.sender, body=answer))
+    if donor is None and launch.get("launch"):
+        # After the reply, never before: the graph takes most of a minute.
+        asyncio.create_task(search(launch["launch"], message, channel))
     return answer
+
+
+async def search(ask: dict, message, channel) -> None:
+    """Runs the request graph for someone who asked over chat, then reports back."""
+    from .graphs import request as flow
+
+    try:
+        panel = public.ensure()
+        out = await asyncio.to_thread(flow.run, ask, panel, None, None, "public")
+        told = _summarise(panel, out)
+    except Exception:
+        log.warning("chat-started request failed", exc_info=True)
+        told = ("I could not finish searching just now. A coordinator will pick this up "
+                "and come back to you.")
+    if channel:
+        await channel.send(Outbound(recipient=message.sender, body=told))
+
+
+def _summarise(panel, out: dict) -> str:
+    gate = out.get("gate") or {}
+    dispatch = out.get("dispatch") or {}
+    sent = dispatch.get("delivered_count") or 0
+    if sent:
+        return (f"I have reached {sent} donor(s) who match and are due to give. "
+                f"I will tell you the moment someone agrees.")
+    if gate.get("gate") == "escalated":
+        # Gate reasons are written for a coordinator. Say the same thing in the words
+        # of someone whose friend is in hospital.
+        why = " ".join(gate.get("reasons") or [])
+        if "cohort" in why:
+            plain = "I could not find enough matched donors near you yet"
+        elif "emergency" in why:
+            plain = "this is urgent enough that a person should see it"
+        elif "contacted" in why:
+            plain = "the donors who match have all been asked recently"
+        else:
+            plain = "it needs a second pair of eyes"
+        return (f"{plain}, so a coordinator is on it now and will come back to you. "
+                f"I am still looking in the meantime.")
+    verdict = out.get("verdict") or {}
+    if verdict.get("verdict") == "rejected":
+        return (f"I could not open that request: {verdict.get('reason', 'it did not pass checks')}. "
+                f"A coordinator will be in touch.")
+    return "I have the request logged. A coordinator is looking at it now."
 
 
 async def poll_forever() -> None:

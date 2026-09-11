@@ -99,6 +99,8 @@ def public_pool() -> dict:
         "bot": config.telegram_bot_username,
         "donors": counts["donors"],
         "cities": counts["cities"],
+        "requests": counts["requests"],
+        "reached": counts["reached"],
         "patient": {"name": patient.name, "blood_group": patient.blood_group,
                     "condition": patient.condition.value, "city": patient.city,
                     "hospital": patient.hospital} if patient else None,

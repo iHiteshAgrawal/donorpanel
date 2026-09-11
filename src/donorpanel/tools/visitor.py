@@ -58,9 +58,11 @@ def register_donor(name: str, city: str, blood_group: str, consent: bool,
         return "I cannot register anyone without a contact address."
     group = blood_group.strip().upper().replace(" ", "")
     if group not in GROUPS:
-        return f"{blood_group} is not a blood group I recognise. Ask them again."
+        return (f"INTERNAL: {blood_group} is not one of the eight blood groups. Ask "
+                f"them again in your own words. Nothing has been saved.")
     if not consent:
-        return "Not registered. Consent is required before anyone joins the pool."
+        return ("INTERNAL: consent was not given, so nobody was registered. Ask them "
+                "plainly whether they are happy to be contacted.")
 
     from ..geo import Geocoder
 

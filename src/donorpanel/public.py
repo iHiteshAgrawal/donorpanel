@@ -43,6 +43,18 @@ def ensure(target=None) -> PanelRepository:
 def headcount(panel=None) -> dict[str, int]:
     panel = panel or repo()
     donors = panel.list_donors()
+    requests = [r for r in (panel.get_request(i) for i in _request_ids(panel)) if r]
+    reached = 0
+    for request in requests:
+        reached += sum(1 for c in panel.list_contacts(request.request_id)
+                       if c.contacted_at)
     return {"donors": len(donors),
             "consented": sum(1 for d in donors if d.consent),
-            "cities": len({d.city for d in donors if d.city})}
+            "cities": len({d.city for d in donors if d.city}),
+            "requests": len(requests),
+            "reached": reached}
+
+
+def _request_ids(panel) -> list[str]:
+    return [k.rsplit("/", 1)[-1].removesuffix(".json")
+            for k in panel.store.keys("requests/")]
