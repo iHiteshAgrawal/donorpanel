@@ -66,15 +66,6 @@ def test_contacts_sort_by_rank_and_count_pledges(repo):
     assert repo.pledged_units("r1") == 1
 
 
-def test_credit_defaults_and_outstanding(repo):
-    credit = repo.get_credit("p1")
-    assert credit.outstanding == 0
-    credit.units_owed = 4
-    credit.units_repaid = 1
-    repo.put_credit(credit)
-    assert repo.get_credit("p1").outstanding == 3
-
-
 def test_pool_marker_moves_when_donor_changes_group(repo):
     repo.put_donor(donor("d1", "B+", "IN-TN"))
     moved = donor("d1", "O-", "IN-TN")

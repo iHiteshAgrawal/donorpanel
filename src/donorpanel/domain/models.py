@@ -129,12 +129,6 @@ class Contact:
         self.status = ContactStatus(self.status)
 
 
-@dataclass
-class Credit:
-    patient_id: str
-    units_owed: int = 0
-    units_repaid: int = 0
-
     @property
     def outstanding(self) -> int:
         return max(0, self.units_owed - self.units_repaid)

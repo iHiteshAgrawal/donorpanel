@@ -111,23 +111,20 @@ def test_record_targets_the_agent_namespace_and_counts_successes(live):
     assert len({r["requestIdentifier"] for r in sent["records"]}) == 2
 
 
-def test_recall_and_everything_unwrap_summaries(live):
+def test_everything_unwraps_summaries_across_the_whole_actor(live):
     hits = {"memoryRecordSummaries": [{"content": {"text": "prefers tamil"}}, {"content": {}}]}
-    client = FakeClient(retrieve_memory_records=[hits, hits])
-    assert memory.recall("a-1", "compose", "tone", client=client) == ["prefers tamil"]
+    client = FakeClient(retrieve_memory_records=hits)
     assert memory.everything("a-1", client=client) == ["prefers tamil"]
-    assert client.calls[0][1]["namespace"] == "/donorpanel/a-1/agents/compose/findings/"
-    assert client.calls[1][1]["namespacePath"] == "/donorpanel/a-1/"
+    assert client.calls[0][1]["namespacePath"] == "/donorpanel/a-1/"
 
 
 @pytest.mark.parametrize("code", ["ValidationException", "AccessDeniedException",
                                   "ResourceNotFoundException", "ThrottledException"])
 def test_every_call_degrades_instead_of_raising(live, code):
     client = FakeClient(create_event=error(code), batch_create_memory_records=error(code),
-                        retrieve_memory_records=[error(code), error(code)])
+                        retrieve_memory_records=error(code))
     assert memory.remember("a-1", "r-1", [("USER", "hi")], client=client) is None
     assert memory.record("a-1", "compose", ["x"], client=client) == 0
-    assert memory.recall("a-1", "compose", "q", client=client) == []
     assert memory.everything("a-1", client=client) == []
 
 
@@ -135,7 +132,6 @@ def test_without_a_memory_id_nothing_reaches_aws(unset):
     client = FakeClient()
     assert memory.remember("a-1", "r-1", [("USER", "hi")], client=client) is None
     assert memory.record("a-1", "compose", ["x"], client=client) == 0
-    assert memory.recall("a-1", "compose", "q", client=client) == []
     assert memory.everything("a-1", client=client) == []
     assert client.calls == []
 

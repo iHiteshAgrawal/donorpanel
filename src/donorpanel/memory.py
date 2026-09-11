@@ -152,55 +152,21 @@ def _hits(response: dict[str, Any]) -> list[str]:
             if hit.get("content", {}).get("text")]
 
 
-def recall(actor_id: str, agent_id: str, query: str, top_k: int = 3,
-           client=None) -> list[str]:
+def everything(actor_id: str, query: str = "what is known about this person",
+               top_k: int = 20, client=None) -> list[str]:
+    """One prefix query across everything remembered about this person, whichever
+    strategy wrote it."""
     if not config.agentcore_memory_id:
         return []
     try:
         return _hits((client or data()).retrieve_memory_records(
             memoryId=config.agentcore_memory_id,
-            namespace=findings_ns(actor_id, agent_id),
+            namespacePath=ROOT.format(actorId=actor_id),
             searchCriteria={"searchQuery": query, "topK": top_k},
         ))
     except ClientError as exc:
-        _degrade("recall", exc)
+        _degrade("everything", exc)
         return []
-
-
-def everything(actor_id: str, query: str = "what is known about this coordinator",
-               top_k: int = 20, client=None) -> list[str]:
-    return [row["text"] for row in catalogue(actor_id, query, top_k, client)]
-
-
-def catalogue(actor_id: str, query: str = "what is known about this coordinator",
-              top_k: int = 20, client=None) -> list[dict[str, Any]]:
-    """Same prefix query as everything(), keeping the namespace so callers can tell a
-    preference the service extracted from a finding we wrote ourselves."""
-    if not config.agentcore_memory_id:
-        return []
-    try:
-        response = (client or data()).retrieve_memory_records(
-            memoryId=config.agentcore_memory_id,
-            namespacePath=ROOT.format(actorId=actor_id),
-            searchCriteria={"searchQuery": query, "topK": top_k},
-        )
-    except ClientError as exc:
-        _degrade("catalogue", exc)
-        return []
-
-    rows = []
-    for hit in response.get("memoryRecordSummaries", []):
-        text = hit.get("content", {}).get("text")
-        if not text:
-            continue
-        namespace = (hit.get("namespaces") or [""])[0]
-        rows.append({
-            "text": _readable(text),
-            "kind": "preference" if "/preferences/" in namespace else "finding",
-            "namespace": namespace,
-            "score": hit.get("score"),
-        })
-    return rows
 
 
 def forget(actor_id: str, client=None) -> int:

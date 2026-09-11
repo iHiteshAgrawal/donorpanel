@@ -3,7 +3,6 @@ from concurrent.futures import ThreadPoolExecutor
 from ..domain import (
     Contact,
     ContactStatus,
-    Credit,
     Donor,
     Patient,
     Request,
@@ -162,9 +161,3 @@ class PanelRepository:
         return [r for r in found if r is not None and r.status in
                 (RequestStatus.AWAITING_APPROVAL, RequestStatus.DISPATCHED)]
 
-    def get_credit(self, patient_id: str) -> Credit:
-        item = self.store.get(o.CREDIT.format(patient_id=patient_id))
-        return Credit(**item) if item else Credit(patient_id=patient_id)
-
-    def put_credit(self, credit: Credit) -> None:
-        self.store.put(o.CREDIT.format(patient_id=credit.patient_id), to_item(credit))

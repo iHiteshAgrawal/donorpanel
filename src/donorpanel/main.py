@@ -75,7 +75,13 @@ def approve(request_id: str, by: str, note: str | None) -> None:
     if repo.get_request(request_id) is None:
         raise SystemExit(f"no request {request_id}")
     repo.approve(request_id, by=by, note=note)
-    print(f"{request_id} approved by {by}")
+    # Approving is the coordinator saying send it. Without this the request would sit
+    # at awaiting_approval and nothing would ever leave the process.
+    from .outreach import deliver
+
+    out = deliver(repo, request_id)
+    print(f"{request_id} approved by {by}: {out['delivered_count']} sent, "
+          f"{out['failed_count']} failed")
 
 
 def pending() -> None:

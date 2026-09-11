@@ -4,26 +4,14 @@ import logging
 from . import chat, public
 from .channels import Outbound, registry
 from .domain import ContactStatus
-from .storage import PanelRepository, store
 
 log = logging.getLogger(__name__)
 
 POLL_SECONDS = 3
 
 
-def sandboxes() -> list[str]:
-    """Every per-actor namespace. Donor replies arrive with no idea which visitor's
-    sandbox they belong to, so the owner has to be found by looking."""
-    seen = set()
-    for key in store("").keys("actors/"):
-        parts = key.split("/")
-        if len(parts) > 2:
-            seen.add(f"actors/{parts[1]}/")
-    return sorted(seen)
-
-
 def open_contact_for(repo, address: str):
-    """A donor in this sandbox who was sent a message and has not answered."""
+    """A donor in the pool who was sent a message and has not answered."""
     for request in repo.in_flight():
         for contact in repo.list_contacts(request.request_id):
             if contact.status is not ContactStatus.SENT:
@@ -34,13 +22,9 @@ def open_contact_for(repo, address: str):
     return None
 
 
-def locate(address: str) -> tuple[PanelRepository, object] | tuple[None, None]:
-    for prefix in sandboxes():
-        repo = PanelRepository(store=store(prefix))
-        donor = open_contact_for(repo, address)
-        if donor is not None:
-            return repo, donor
-    return None, None
+def locate(address: str):
+    panel = public.ensure()
+    return panel, open_contact_for(panel, address)
 
 
 async def handle(message, channels) -> str | None:

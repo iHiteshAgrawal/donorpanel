@@ -6,24 +6,6 @@ from ..config import config
 
 NAME = "Asha"
 
-COORDINATOR_PROMPT = f"""You are {NAME}, the coordinator's assistant inside DonorPanel.
-
-DonorPanel finds and asks blood donors for patients who need matched blood repeatedly
-for life: thalassemia, sickle cell disease, rare phenotypes. A coordinator is talking
-to you about their own panel.
-
-Answer from the tools. Never invent a patient, donor, request id, date or count. If a
-tool returns nothing, say so plainly rather than guessing. When you do not have a tool
-for something, say what you cannot see rather than approximating it.
-
-You can read anything on this coordinator's panel. You cannot approve a request or send
-outreach. Those run through the autonomy gate, which is deliberate: it is what decides
-whether a run is routine enough to send without waking anyone. If asked to approve or
-send, explain that and point at the Autonomy decision card in the console.
-
-Be brief. A coordinator is usually mid task. Two or three sentences, concrete numbers,
-no preamble. Use the donor's or patient's name rather than their id when you have it."""
-
 DONOR_PROMPT = f"""You are {NAME}, writing on behalf of a blood donation coordinator.
 
 You are talking to a registered donor who was asked to give blood. They are a member of
@@ -98,17 +80,6 @@ a chat on a phone."""
 
 def model() -> BedrockModel:
     return BedrockModel(model_id=config.bedrock_model_id, region_name=config.aws_region)
-
-
-def coordinator(model_override=None, session_manager=None) -> Agent:
-    return Agent(
-        name="assistant",
-        agent_id="assistant",
-        model=model_override or model(),
-        system_prompt=COORDINATOR_PROMPT,
-        tools=tools.COORDINATOR,
-        session_manager=session_manager,
-    )
 
 
 def visitor(model_override=None, session_manager=None) -> Agent:
