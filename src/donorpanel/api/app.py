@@ -5,11 +5,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .. import auth
+from ..auth import Actor
 from ..config import config
 from ..domain import RequestStatus
 from ..graphs import request as flow
@@ -25,6 +27,17 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
 WEB = Path(__file__).resolve().parents[3] / "web" / "dist"
 
 
+def current_actor(request: Request,
+                  authorization: str | None = Header(default=None)) -> Actor:
+    # The SPA sends a stable per browser id so an unauthenticated visitor still
+    # gets their own sandbox. Client IP would collide for judges behind one NAT.
+    seed = request.headers.get("x-donorpanel-session") or "guest"
+    try:
+        return auth.actor_from(authorization, fallback_seed=seed)
+    except Exception as exc:
+        raise HTTPException(401, f"invalid token: {exc}") from exc
+
+
 def repo() -> PanelRepository:
     return PanelRepository()
 
@@ -36,7 +49,14 @@ def sse(event: str, payload: Any) -> str:
 @app.get("/api/health")
 def health() -> dict:
     return {"ok": True, "region": config.aws_region, "model": config.bedrock_model_id,
-            "storage": f"s3://{config.bucket}" if config.bucket else config.local_root}
+            "storage": f"s3://{config.bucket}" if config.bucket else config.local_root,
+            "auth": "cognito" if auth.configured() else "anonymous sandbox"}
+
+
+@app.get("/api/me")
+def me(actor: Actor = Depends(current_actor)) -> dict:
+    return {"actor_id": actor.actor_id, "name": actor.name, "email": actor.email,
+            "authenticated": actor.authenticated, "namespace": actor.prefix}
 
 
 @app.get("/api/graph")

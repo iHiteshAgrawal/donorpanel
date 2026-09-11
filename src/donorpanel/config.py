@@ -18,6 +18,8 @@ class Config:
     )
     ses_sender_email: str | None = field(default_factory=lambda: os.getenv("SES_SENDER_EMAIL") or None)
     bucket: str | None = field(default_factory=lambda: os.getenv("DONORPANEL_BUCKET") or None)
+    cognito_pool_id: str | None = field(default_factory=lambda: os.getenv("COGNITO_POOL_ID") or None)
+    cognito_client_id: str | None = field(default_factory=lambda: os.getenv("COGNITO_CLIENT_ID") or None)
     local_root: str = field(default_factory=lambda: os.getenv("DONORPANEL_LOCAL_ROOT", "data/local"))
     env: str = field(default_factory=lambda: os.getenv("DONORPANEL_ENV", "local"))
 

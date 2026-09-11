@@ -10,6 +10,7 @@ dependencies = [
     "httpx>=0.27.0",
     "pyyaml>=6.0",
     "python-dotenv>=1.0.0",
+    "pyjwt[crypto]>=2.9",
     "pydantic>=2.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
@@ -30,6 +31,10 @@ packages = ["src/donorpanel"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI requires these in argument defaults; that is the framework idiom.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header", "fastapi.Query", "fastapi.Path"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
