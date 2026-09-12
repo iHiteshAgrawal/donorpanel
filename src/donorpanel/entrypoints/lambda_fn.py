@@ -32,8 +32,11 @@ def _lambda():
 # the message. Cut it off early enough that the in-process fallback still has room to run.
 # botocore counts max_attempts as retries on top of the first call, so 0 means try once.
 # Set to 1 this waited out two full 90s timeouts before falling back, taking 187s.
+# A healthy Runtime answers in about 9s, so 20 is generous. It is also the whole cost of a
+# sick one: at 60 every failure burned a full minute before the in-process fallback began,
+# which is what made the bot feel like it had gone away.
 _runtime_client = BotoConfig(retries={"max_attempts": 0}, connect_timeout=5,
-                             read_timeout=60)
+                             read_timeout=20)
 
 
 def _agentcore():
@@ -41,7 +44,7 @@ def _agentcore():
                         config=_runtime_client)
 
 
-def ask_asha(sender: str, prompt: str, channel: str = "telegram") -> dict:
+def ask_asha(sender: str, prompt: str, channel: str = "telegram", on_answer=None) -> dict:
     """AgentCore Runtime when it is configured, this process when it is not.
 
     The fallback is the whole reason Runtime is safe to depend on two days out: it runs
@@ -67,7 +70,7 @@ def ask_asha(sender: str, prompt: str, channel: str = "telegram") -> dict:
     carry: dict = {}
     try:
         answer = chat.reply(pool.ensure(), prompt, sender=sender, channel=channel,
-                            carry=carry)
+                            carry=carry, on_answer=on_answer)
     except Exception as exc:
         # Runtime is down or Bedrock is throttling, and the fallback hit the same wall.
         # Silence is the worst answer available: somebody messaged asking for blood.
@@ -127,8 +130,17 @@ def webhook(body: dict, headers: dict) -> dict:
 def reply(event: dict) -> dict:
     message, sender = event["text"], event["sender"]
     channel, reply_to = event.get("channel", "telegram"), event["reply_to"]
-    out = ask_asha(sender, message, channel)
-    if out.get("text"):
+
+    # Send the moment the words exist, rather than after the memory write. Guarded so that
+    # the Runtime path, which cannot call back into this process, still sends below.
+    sent: list[str] = []
+
+    def deliver(answer: str) -> None:
+        sent.append(answer)
+        _send(channel, reply_to, answer)
+
+    out = ask_asha(sender, message, channel, on_answer=deliver)
+    if out.get("text") and not sent:
         _send(channel, reply_to, out["text"])
     if out.get("launch"):
         _self_invoke({"mode": "search", "ask": out["launch"],

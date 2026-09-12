@@ -40,7 +40,7 @@ def plain(text: str) -> str:
 
 
 def reply(repo, text: str, sender: str, channel: str = "telegram",
-          carry: dict | None = None, agent=None) -> str:
+          carry: dict | None = None, agent=None, on_answer=None) -> str:
     """One conversational turn. The session manager keeps the thread; AgentCore Memory
     keeps what is worth remembering after the thread is gone. One thread per person,
     whether they are asking for blood, offering it, or answering an earlier ask."""
@@ -54,6 +54,11 @@ def reply(repo, text: str, sender: str, channel: str = "telegram",
         # Tools cannot start long work themselves, so they leave it here.
         carry["launch"] = state["launch"]
     answer = spoken(str(result))
+
+    # Send before remembering. The memory write costs about 1.5s and nothing in the reply
+    # depends on it, so doing it first simply made the person wait longer for the same words.
+    if on_answer is not None:
+        on_answer(answer)
 
     # Conversation is exactly the shape USER_PREFERENCE mines, so chat is the richest
     # source of standing preferences the system has.

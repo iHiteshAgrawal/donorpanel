@@ -27,7 +27,7 @@ def http(body, headers=None, path="/webhook"):
 def test_webhook_answers_and_sends(monkeypatch):
     sent, asked = [], []
     monkeypatch.setattr(handler, "ask_asha",
-                        lambda s, p, c: asked.append((s, p)) or {"text": "hello back"})
+                        lambda s, p, c, **kw: asked.append((s, p)) or {"text": "hello back"})
     monkeypatch.setattr(handler, "_send", lambda ch, to, body: sent.append((ch, to, body)))
     out = handler.handler(http(UPDATE))
     assert out["statusCode"] == 200
@@ -38,7 +38,7 @@ def test_webhook_answers_and_sends(monkeypatch):
 def test_a_launch_triggers_a_second_invocation(monkeypatch):
     later = []
     monkeypatch.setattr(handler, "ask_asha",
-                        lambda *a: {"text": "searching", "launch": {"patient_id": "p-1"}})
+                        lambda *a, **kw: {"text": "searching", "launch": {"patient_id": "p-1"}})
     monkeypatch.setattr(handler, "_send", lambda *a: None)
     monkeypatch.setattr(handler, "_self_invoke", later.append)
     handler.reply({"sender": "8911353204", "text": "hi", "reply_to": "8911353204",
@@ -53,7 +53,7 @@ def test_the_webhook_acknowledges_without_calling_the_model(monkeypatch):
     redeliver and does so every couple of minutes indefinitely."""
     queued, asked = [], []
     monkeypatch.setattr(handler, "_self_invoke", queued.append)
-    monkeypatch.setattr(handler, "ask_asha", lambda *a: asked.append(1) or {})
+    monkeypatch.setattr(handler, "ask_asha", lambda *a, **kw: asked.append(1) or {})
 
     out = handler.handler(http(UPDATE))
 
@@ -71,14 +71,14 @@ def test_the_wrong_secret_is_refused(monkeypatch):
     monkeypatch.setattr(handler, "_send", lambda *a: None)
     # Without this the accepted case runs the real agent, calling AgentCore and Bedrock
     # for a test about a header. That was 328 of this file's 344 seconds.
-    monkeypatch.setattr(handler, "ask_asha", lambda *a: {"text": "hello back"})
+    monkeypatch.setattr(handler, "ask_asha", lambda *a, **kw: {"text": "hello back"})
     assert handler.handler(http(UPDATE, {"X-Telegram-Bot-Api-Secret-Token": "nope"}))["statusCode"] == 403
     assert handler.handler(http(UPDATE, {"X-Telegram-Bot-Api-Secret-Token": "letmein"}))["statusCode"] != 403
 
 
 def test_a_bot_message_is_ignored_without_calling_the_agent(monkeypatch):
     called = []
-    monkeypatch.setattr(handler, "ask_asha", lambda *a: called.append(1) or {})
+    monkeypatch.setattr(handler, "ask_asha", lambda *a, **kw: called.append(1) or {})
     update = json.loads(json.dumps(UPDATE))
     update["message"]["from"]["is_bot"] = True
     assert handler.handler(http(update))["body"] == "ignored"
