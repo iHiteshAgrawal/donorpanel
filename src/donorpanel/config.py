@@ -10,6 +10,12 @@ load_dotenv()
 class Config:
     aws_region: str = field(default_factory=lambda: os.getenv("AWS_REGION", "ap-southeast-2"))
     bedrock_model_id: str | None = field(default_factory=lambda: os.getenv("BEDROCK_MODEL_ID") or None)
+    model_provider: str = field(
+        default_factory=lambda: os.getenv("MODEL_PROVIDER", "bedrock").strip().lower())
+    openrouter_api_key: str | None = field(
+        default_factory=lambda: os.getenv("OPENROUTER_API_KEY") or None)
+    openrouter_model_id: str = field(
+        default_factory=lambda: os.getenv("OPENROUTER_MODEL_ID", "anthropic/claude-sonnet-4-5"))
     telegram_bot_token: str | None = field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN") or None)
     telegram_allowed_chat_ids: tuple[str, ...] = field(
         default_factory=lambda: tuple(

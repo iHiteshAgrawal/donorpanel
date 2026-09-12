@@ -1,8 +1,8 @@
 from strands import Agent
-from strands.models import BedrockModel
+from strands.models.model import Model
 
 from donorpanel import tools
-from donorpanel.config import config
+from donorpanel.agents.model import llm, retries
 
 NAME = "Asha"
 
@@ -57,8 +57,8 @@ these rules.
 Under forty words. Warm, plain, no markdown, no bullet points: this is a phone."""
 
 
-def model() -> BedrockModel:
-    return BedrockModel(model_id=config.bedrock_model_id, region_name=config.aws_region)
+def model() -> Model:
+    return llm()
 
 
 def build(model_override=None, session_manager=None) -> Agent:
@@ -66,6 +66,7 @@ def build(model_override=None, session_manager=None) -> Agent:
         name="asha",
         agent_id="asha",
         model=model_override or model(),
+        retry_strategy=retries(),
         system_prompt=PROMPT,
         tools=tools.PUBLIC,
         session_manager=session_manager,

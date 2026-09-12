@@ -20,6 +20,9 @@ def environment() -> dict[str, str]:
     values = {
         "AWS_REGION": REGION,
         "BEDROCK_MODEL_ID": config.bedrock_model_id or "",
+        "MODEL_PROVIDER": config.model_provider,
+        "OPENROUTER_API_KEY": config.openrouter_api_key or "",
+        "OPENROUTER_MODEL_ID": config.openrouter_model_id,
         "DONORPANEL_BUCKET": config.bucket or "",
         "AGENTCORE_MEMORY_ID": config.agentcore_memory_id or "",
         "TELEGRAM_BOT_TOKEN": config.telegram_bot_token or "",

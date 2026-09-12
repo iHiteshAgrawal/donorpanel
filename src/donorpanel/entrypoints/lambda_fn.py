@@ -9,6 +9,7 @@ import logging
 import os
 
 import boto3
+from botocore.config import Config as BotoConfig
 
 from donorpanel.adapters.channels import Outbound, TelegramChannel, registry
 from donorpanel.config import config
@@ -26,8 +27,18 @@ def _lambda():
     return boto3.client("lambda", region_name=config.aws_region)
 
 
+# Without a read timeout this call waits until Lambda kills the whole invocation at 300s,
+# so the handler never returns, API Gateway answers Telegram 503, and Telegram redelivers
+# the message. Cut it off early enough that the in-process fallback still has room to run.
+# botocore counts max_attempts as retries on top of the first call, so 0 means try once.
+# Set to 1 this waited out two full 90s timeouts before falling back, taking 187s.
+_runtime_client = BotoConfig(retries={"max_attempts": 0}, connect_timeout=5,
+                             read_timeout=60)
+
+
 def _agentcore():
-    return boto3.client("bedrock-agentcore", region_name=config.aws_region)
+    return boto3.client("bedrock-agentcore", region_name=config.aws_region,
+                        config=_runtime_client)
 
 
 def ask_asha(sender: str, prompt: str, channel: str = "telegram") -> dict:
@@ -54,9 +65,24 @@ def ask_asha(sender: str, prompt: str, channel: str = "telegram") -> dict:
     from donorpanel.services import chat
 
     carry: dict = {}
-    answer = chat.reply(pool.ensure(), prompt, sender=sender, channel=channel,
-                        carry=carry)
+    try:
+        answer = chat.reply(pool.ensure(), prompt, sender=sender, channel=channel,
+                            carry=carry)
+    except Exception as exc:
+        # Runtime is down or Bedrock is throttling, and the fallback hit the same wall.
+        # Silence is the worst answer available: somebody messaged asking for blood.
+        log.warning("both runtime and in process failed", exc_info=True)
+        return {"text": apology(exc), "launch": None}
     return {"text": answer, "launch": carry.get("launch")}
+
+
+def apology(exc: Exception) -> str:
+    throttled = "throttl" in str(exc).lower() or "ThrottlingException" in str(exc)
+    if throttled:
+        return ("I am getting more messages than I can answer this minute. Please send "
+                "that again shortly and I will pick it straight up.")
+    return ("Something went wrong at my end, not yours. Please try again in a moment, "
+            "and a coordinator will step in if it keeps happening.")
 
 
 def _send(channel_name: str, recipient: str, body: str) -> None:
@@ -68,8 +94,11 @@ def _send(channel_name: str, recipient: str, body: str) -> None:
 def _self_invoke(payload: dict) -> None:
     name = os.getenv("AWS_LAMBDA_FUNCTION_NAME")
     if not name:
+        # Off Lambda there is nothing to invoke, so run the mode here. Dispatch on it
+        # rather than assuming search, which is what this did when search was the only
+        # asynchronous mode.
         log.info("not on lambda, running %s inline", payload.get("mode"))
-        search(payload)
+        (reply if payload.get("mode") == "reply" else search)(payload)
         return
     _lambda().invoke(FunctionName=name, InvocationType="Event",
                      Payload=json.dumps(payload).encode())
@@ -85,15 +114,26 @@ def webhook(body: dict, headers: dict) -> dict:
     if message is None:
         return {"statusCode": 200, "body": "ignored"}
 
-    out = ask_asha(message.sender, message.body, message.channel)
-    if out.get("text"):
-        _send(message.channel, message.reply_to, out["text"])
-    if out.get("launch"):
-        # After the reply, never before: the graph takes most of a minute and Telegram
-        # retries anything it considers slow.
-        _self_invoke({"mode": "search", "ask": out["launch"],
-                      "reply_to": message.reply_to, "channel": message.channel})
+    # Acknowledge before answering. API Gateway caps an HTTP API integration at 30s and
+    # that is the hard maximum, but a model call plus session load runs past it, so the
+    # reply used to arrive as a 503. Telegram reads a 503 as "send it again" and redelivers
+    # the same message every couple of minutes, which is how one "hi" became 3,737 throttle
+    # events. The answer is sent from the async invocation below, over the Telegram API.
+    _self_invoke({"mode": "reply", "sender": message.sender, "text": message.body,
+                  "reply_to": message.reply_to, "channel": message.channel})
     return {"statusCode": 200, "body": "ok"}
+
+
+def reply(event: dict) -> dict:
+    message, sender = event["text"], event["sender"]
+    channel, reply_to = event.get("channel", "telegram"), event["reply_to"]
+    out = ask_asha(sender, message, channel)
+    if out.get("text"):
+        _send(channel, reply_to, out["text"])
+    if out.get("launch"):
+        _self_invoke({"mode": "search", "ask": out["launch"],
+                      "reply_to": reply_to, "channel": channel})
+    return {"ok": True}
 
 
 def search(event: dict) -> dict:
@@ -127,6 +167,8 @@ def handler(event: dict, _context=None) -> dict:
             return tick(event)
         if mode == "search":
             return search(event)
+        if mode == "reply":
+            return reply(event)
 
         path = (event.get("rawPath") or event.get("path") or "").rstrip("/")
         if path.endswith("/api/public"):

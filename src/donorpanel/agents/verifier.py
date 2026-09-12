@@ -1,7 +1,7 @@
 from strands import Agent
-from strands.models import BedrockModel
+from strands.models.model import Model
 
-from donorpanel.config import config
+from donorpanel.agents.model import llm, retries
 from donorpanel.tools import request_history
 
 SYSTEM_PROMPT = """You verify incoming blood transfusion requests before a
@@ -62,16 +62,16 @@ a human should see it. The reason is shown to a human coordinator, so make it
 specific and concrete."""
 
 
-def model() -> BedrockModel:
-    return BedrockModel(model_id=config.bedrock_model_id,
-                        region_name=config.aws_region)
+def model() -> Model:
+    return llm()
 
 
-def build(model_override: BedrockModel | None = None) -> Agent:
+def build(model_override: Model | None = None) -> Agent:
     return Agent(
         name="verify",
         agent_id="verify",
         model=model_override or model(),
+        retry_strategy=retries(),
         system_prompt=SYSTEM_PROMPT,
         tools=[request_history],
         # Strands prints reasoning and replies to stdout by default. On Lambda and
