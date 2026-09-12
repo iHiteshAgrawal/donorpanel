@@ -12,3 +12,4 @@ data/local/
 archive/
 web/node_modules/
 web/dist/
+web/.env

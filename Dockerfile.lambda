@@ -1,0 +1,22 @@
+# The webhook receiver, the scheduled forecast, and the request graph.
+# The AWS base image already carries the Lambda runtime interface client. It is large
+# (roughly 550MB before our code) but it is the supported path.
+FROM public.ecr.aws/lambda/python:3.12
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Same layering reason as Dockerfile.runtime: keep the dependency layer keyed on
+# pyproject.toml so a code change ships one small layer instead of several hundred MB.
+COPY pyproject.toml README.md ${LAMBDA_TASK_ROOT}/
+RUN cd ${LAMBDA_TASK_ROOT} \
+ && mkdir -p src/donorpanel \
+ && touch src/donorpanel/__init__.py \
+ && pip install --no-cache-dir . \
+ && pip uninstall -y donorpanel \
+ && rm -rf src
+
+COPY src ${LAMBDA_TASK_ROOT}/src
+RUN pip install --no-cache-dir --no-deps ${LAMBDA_TASK_ROOT}
+
+CMD ["donorpanel.entrypoints.lambda_fn.handler"]

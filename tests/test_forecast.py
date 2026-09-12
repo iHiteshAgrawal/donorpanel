@@ -100,3 +100,16 @@ def test_one_failure_does_not_stop_the_others(repo):
     out = forecast.tick(repo, TODAY, runner=runner)
     assert len(out["opened"]) == 1 and len(out["failed"]) == 1
     assert out["failed"][0]["patient"] == "Ravi"
+
+
+def test_a_compatible_donor_is_never_told_they_cannot_help():
+    """Nova claimed O+ cannot donate to B+ during a live conversation. The table is
+    authoritative and O+ is a valid donor for B+; the tool must say so unambiguously."""
+    from donorpanel.domain.matching import compatible_groups
+
+    assert "O+" in compatible_groups("B+")
+    assert set(compatible_groups("B+")) == {"O-", "O+", "B-", "B+"}
+    # Universal donor reaches everyone; universal recipient receives from everyone.
+    for recipient in ("O-", "O+", "A-", "A+", "B-", "B+", "AB-", "AB+"):
+        assert "O-" in compatible_groups(recipient)
+    assert len(compatible_groups("AB+")) == 8

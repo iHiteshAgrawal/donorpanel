@@ -27,15 +27,15 @@ def init() -> None:
 
 
 def reset() -> None:
-    from donorpanel import seed as seeds
     from donorpanel.adapters.storage import PanelRepository
+    from donorpanel.services import seed as seeds
 
     print(f"cleared {seeds.wipe(PanelRepository())} objects")
 
 
 def seed() -> None:
-    from donorpanel import seed as seeds
     from donorpanel.adapters.storage import PanelRepository
+    from donorpanel.services import seed as seeds
 
     init()
     repo = PanelRepository()
@@ -109,7 +109,7 @@ def pending() -> None:
 
 
 def memory_init() -> None:
-    from donorpanel import memory
+    from donorpanel.adapters import memory
 
     memory_id = memory.ensure()
     print(f"memory {memory_id} ready")

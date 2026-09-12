@@ -51,7 +51,7 @@ def ask_asha(sender: str, prompt: str, channel: str = "telegram") -> dict:
         except Exception:
             log.warning("runtime invoke failed, answering in process", exc_info=True)
 
-    from donorpanel import chat
+    from donorpanel.services import chat
 
     carry: dict = {}
     answer = chat.reply(pool.ensure(), prompt, sender=sender, channel=channel,

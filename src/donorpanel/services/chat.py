@@ -1,10 +1,22 @@
 import logging
+import re
 
 from donorpanel.adapters import memory
 from donorpanel.adapters.storage import session_manager
 from donorpanel.agents import assistant
 
 log = logging.getLogger(__name__)
+
+# Nova emits its reasoning inline rather than in a separate channel, so it arrives in
+# the same string as the reply and would otherwise be sent to the person.
+THINKING = re.compile(r"<thinking>.*?</thinking>\s*", re.DOTALL | re.IGNORECASE)
+
+
+def spoken(text: str) -> str:
+    cleaned = THINKING.sub("", text)
+    # A stray unclosed tag would otherwise leave everything after it visible.
+    cleaned = re.sub(r"</?thinking>", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
 
 
 def reply(repo, text: str, sender: str, channel: str = "telegram",
@@ -21,7 +33,7 @@ def reply(repo, text: str, sender: str, channel: str = "telegram",
     if carry is not None and state.get("launch"):
         # Tools cannot start long work themselves, so they leave it here.
         carry["launch"] = state["launch"]
-    answer = str(result).strip()
+    answer = spoken(str(result))
 
     # Conversation is exactly the shape USER_PREFERENCE mines, so chat is the richest
     # source of standing preferences the system has.

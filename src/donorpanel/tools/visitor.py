@@ -26,6 +26,27 @@ def who_needs_blood(tool_context: ToolContext) -> str:
             f"Donors with these groups can help: {helpful}.")
 
 
+@tool
+def blood_compatibility(donor_group: str, recipient_group: str) -> str:
+    """Whether one blood group can donate to another. Use this for EVERY question about
+    compatibility, including ones you believe you already know the answer to.
+
+    Args:
+        donor_group: The group giving blood, like O+.
+        recipient_group: The group receiving it, like B+.
+    """
+    donor = donor_group.strip().upper().replace(" ", "")
+    recipient = recipient_group.strip().upper().replace(" ", "")
+    if donor not in GROUPS or recipient not in GROUPS:
+        return (f"INTERNAL: {donor_group} or {recipient_group} is not one of the eight "
+                f"blood groups. Ask them to say it again.")
+    if donor in compatible_groups(recipient):
+        return (f"YES. {donor} can donate to {recipient}. State this plainly and do not "
+                f"qualify it.")
+    return (f"NO. {donor} cannot donate to {recipient}. The groups that can are: "
+            f"{', '.join(compatible_groups(recipient))}.")
+
+
 @tool(context=True)
 def am_i_registered(tool_context: ToolContext) -> str:
     """Whether this person is already in the donor pool. Call this before asking them
@@ -77,6 +98,12 @@ def register_donor(name: str, city: str, blood_group: str, consent: bool,
 
     patient = repo.get_patient("p-ravi")
     useful = patient and group in compatible_groups(patient.blood_group)
-    tail = (f" Your group can help {patient.name}, who needs {patient.blood_group}."
-            if useful else " Nobody needs your group right now, but that changes weekly.")
-    return f"Registered {name} as {group} in {city}.{tail}"
+    if not patient:
+        tail = "Nobody is waiting right now, but that changes weekly."
+    elif useful:
+        tail = (f"CONFIRMED COMPATIBLE: {group} can donate to {patient.name}, who needs "
+                f"{patient.blood_group}. Tell them so.")
+    else:
+        tail = (f"NOT COMPATIBLE: {group} cannot donate to {patient.name}, who needs "
+                f"{patient.blood_group}. Say someone else may need them soon.")
+    return f"Registered {name} as {group} in {city}. {tail}"

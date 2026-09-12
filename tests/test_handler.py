@@ -9,11 +9,15 @@ with open("tests/fixtures/telegram-update.json") as fixture:
 
 
 @pytest.fixture(autouse=True)
-def no_allow_list(monkeypatch):
+def open_to_everyone(monkeypatch):
+    """.env pins the allow list to one chat and now carries a webhook secret. Both are
+    real production settings and both would reject every fixture here."""
     from dataclasses import replace
 
     from donorpanel.adapters.channels import telegram as tg
     monkeypatch.setattr(tg, "config", replace(tg.config, telegram_allowed_chat_ids=()))
+    monkeypatch.setattr(handler, "config",
+                        replace(handler.config, telegram_webhook_secret=None))
 
 
 def http(body, headers=None, path="/webhook"):
@@ -88,3 +92,14 @@ def test_session_id_satisfies_the_runtime_length_rule():
     assert 33 <= len(made) <= 256
     assert made == session_id("8911353204")
     assert made != session_id("8911353205")
+
+
+def test_reasoning_never_reaches_the_person():
+    """Nova emits <thinking> inline, in the same string as the reply."""
+    from donorpanel.services.chat import spoken
+
+    assert spoken("<thinking> I should check </thinking>\nYes, O+ works.") == "Yes, O+ works."
+    assert spoken("<THINKING>x</THINKING>Hello") == "Hello"
+    assert spoken("<thinking>never closed. Hello") == "never closed. Hello"
+    assert spoken("Plain reply") == "Plain reply"
+    assert spoken("<thinking>a</thinking>One<thinking>b</thinking>Two") == "OneTwo"
