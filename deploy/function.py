@@ -5,7 +5,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from deploy.runtime import environment
-from deploy.settings import FUNCTION_NAME, LAMBDA_REPO, LAMBDA_ROLE, REGION, repo_uri, role_arn
+from deploy.settings import FUNCTION_NAME, LAMBDA_REPO, LAMBDA_ROLE, REGION, pinned, role_arn
 from donorpanel.config import config
 
 lam = boto3.client("lambda", region_name=REGION)
@@ -39,7 +39,7 @@ def wait_active() -> None:
 
 
 def main() -> None:
-    image = f"{repo_uri(LAMBDA_REPO)}:latest"
+    image = pinned(LAMBDA_REPO)
     try:
         lam.create_function(
             FunctionName=FUNCTION_NAME,

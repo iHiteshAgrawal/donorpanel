@@ -42,11 +42,15 @@ def deliver(repo, request_id: str, channels: dict[str, Channel] | None = None) -
     with no event loop of their own, so asyncio.run does not raise.
     """
     active = registry() if channels is None else channels
-    contacts = repo.list_contacts(request_id)
+    # Only people who have not been messaged yet. This makes deliver idempotent, and it
+    # is what lets a later wave add donors to an existing request without messaging
+    # everyone a second time.
+    contacts = [c for c in repo.list_contacts(request_id)
+                if c.status is ContactStatus.PENDING]
     drafts = repo.get_drafts(request_id)
     if not contacts:
         return {"request_id": request_id, "delivered_count": 0, "failed_count": 0,
-                "problem": "no cohort to contact", "outreach": []}
+                "problem": "nobody new to contact", "outreach": []}
     if not drafts:
         return {"request_id": request_id, "delivered_count": 0, "failed_count": 0,
                 "problem": "no drafts to send", "outreach": []}

@@ -47,6 +47,24 @@ def blood_compatibility(donor_group: str, recipient_group: str) -> str:
             f"{', '.join(compatible_groups(recipient))}.")
 
 
+@tool
+def who_can_i_help(blood_group: str) -> str:
+    """Every blood group a donor of this group can give to. Use this for "who can I
+    help" and "who can receive my blood", which blood_compatibility cannot answer
+    because it compares one pair at a time.
+
+    Args:
+        blood_group: The donor's group, like AB+.
+    """
+    donor = blood_group.strip().upper().replace(" ", "")
+    if donor not in GROUPS:
+        return (f"INTERNAL: {blood_group} is not one of the eight blood groups. Ask "
+                f"them again in your own words.")
+    helps = [r for r in GROUPS if donor in compatible_groups(r)]
+    return (f"{donor} can donate to: {', '.join(helps)}. That is the complete list, "
+            f"state it as given.")
+
+
 @tool(context=True)
 def am_i_registered(tool_context: ToolContext) -> str:
     """Whether this person is already in the donor pool. Call this before asking them

@@ -1,0 +1,7 @@
+{
+  "tag": "2ecca75-1789215225",
+  "images": {
+    "bedrock-agentcore-donorpanel": "292368431051.dkr.ecr.ap-southeast-2.amazonaws.com/bedrock-agentcore-donorpanel:2ecca75-1789215225",
+    "donorpanel-lambda": "292368431051.dkr.ecr.ap-southeast-2.amazonaws.com/donorpanel-lambda:2ecca75-1789215225"
+  }
+}

@@ -2,15 +2,17 @@ from donorpanel.tools.donor import my_eligibility, my_request, record_answer
 from donorpanel.tools.history import request_history
 from donorpanel.tools.request import request_progress, start_request
 from donorpanel.tools.visitor import (
-                                      am_i_registered,
-                                      blood_compatibility,
-                                      register_donor,
-                                      who_needs_blood,
+    am_i_registered,
+    blood_compatibility,
+    register_donor,
+    who_can_i_help,
+    who_needs_blood,
 )
 
 PUBLIC = [
     who_needs_blood,
     blood_compatibility,
+    who_can_i_help,
     am_i_registered,
     register_donor,
     start_request,
@@ -31,5 +33,6 @@ __all__ = [
     "request_history",
     "request_progress",
     "start_request",
+    "who_can_i_help",
     "who_needs_blood",
 ]

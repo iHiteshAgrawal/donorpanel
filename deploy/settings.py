@@ -1,4 +1,8 @@
 """Names and ARNs every deploy step shares. Change them here, nowhere else."""
+import json
+import pathlib
+import time
+
 import boto3
 
 from donorpanel.config import config
@@ -25,6 +29,31 @@ SITE_BUCKET = f"donorpanel-site-{ACCOUNT}"
 PANEL_BUCKET = config.bucket or f"donorpanel-{ACCOUNT}"
 MEMORY_ARN = (f"arn:aws:bedrock-agentcore:{REGION}:{ACCOUNT}:memory/"
               f"{config.agentcore_memory_id}") if config.agentcore_memory_id else None
+
+
+def image_tag() -> str:
+    """What is being deployed, as a tag you can point at later. A dirty tree gets a
+    timestamp so two builds from the same commit never share a tag."""
+    import subprocess
+
+    def git(*args: str) -> str:
+        out = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
+        return out.stdout.strip()
+
+    sha = git("rev-parse", "--short", "HEAD") or "nogit"
+    return f"{sha}-{int(time.time())}" if git("status", "--porcelain") else sha
+
+
+def deployed() -> dict:
+    """What push.py last shipped. Absent on a fresh clone, so callers fall back."""
+    record = pathlib.Path(__file__).parent / "deployed.json"
+    return json.loads(record.read_text()) if record.exists() else {}
+
+
+def pinned(repo: str) -> str:
+    """The exact image to deploy, by tag, falling back to latest."""
+    tag = deployed().get("tag", "latest")
+    return f"{repo_uri(repo)}:{tag}"
 
 
 def repo_uri(name: str) -> str:

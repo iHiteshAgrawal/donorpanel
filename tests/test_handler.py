@@ -103,3 +103,16 @@ def test_reasoning_never_reaches_the_person():
     assert spoken("<thinking>never closed. Hello") == "never closed. Hello"
     assert spoken("Plain reply") == "Plain reply"
     assert spoken("<thinking>a</thinking>One<thinking>b</thinking>Two") == "OneTwo"
+
+
+def test_markdown_never_reaches_a_chat_bubble():
+    """Telegram shows the characters, so asterisks and dashes arrive literally. Nova 2
+    reaches for bullets even when the prompt forbids them."""
+    from donorpanel.services.chat import plain
+
+    assert plain("I need:\n- Name\n- City") == "I need: Name. City."
+    assert plain("Hello **Hitesh**, you are _registered_.") == "Hello Hitesh, you are registered."
+    assert plain("* one\n* two") == "one. two."
+    assert plain("One plain line.") == "One plain line."
+    # A hyphen inside a sentence is not a bullet.
+    assert plain("O-negative is rare") == "O-negative is rare"

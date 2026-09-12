@@ -2,6 +2,11 @@
 
 **Asha finds blood donors, so families don't have to.**
 
+| | |
+| --- | --- |
+| Try it | [t.me/donorpanelbot](https://t.me/donorpanelbot) |
+| Site | [d2ljcqat7a9ftn.cloudfront.net](https://d2ljcqat7a9ftn.cloudfront.net) |
+
 Patients with thalassemia, sickle cell disease and rare phenotypes need matched blood on a recurring basis, often every three weeks, for life. The pool of donors who can match them is systematically smaller than the population that needs them, because matching follows ancestry and donor registries do not mirror their patients. Registries are large but mostly unreachable, so the recruiting burden falls on families, permanently.
 
 DonorPanel holds the donor network so no family has to browse it, and does the asking so no family has to.
@@ -64,9 +69,17 @@ Writes take two paths on purpose, because they have very different latencies:
 
 Writing a record we already hold, instead of paying a model to re-derive it from a transcript, is also what the AWS cost guidance recommends. On the next run `compose` reads that memory back with a single prefix query and folds it into its brief.
 
-### The forecast
+### The scheduled tick
 
-A patient on a fixed cycle is predictable. Last transfusion plus the policy interval is the next one, so a daily tick opens requests before anyone asks. This is deterministic code, not an agent. Patients with a request still pointing at a future date are skipped, or a daily tick would open a duplicate every day.
+Every six hours, three passes over the pool. All deterministic code, no agent involved.
+
+**Close.** Requests past their date settle as `FULFILLED` or `SHORT`. This runs first for a reason: a patient with an open request is deliberately never re-forecast, so without closing, every patient becomes permanently invisible after their first request.
+
+**Forecast.** A patient on a fixed cycle is predictable, so last transfusion plus the policy interval is the next one. Requests open before anyone asks.
+
+**Chase.** `outreach.escalation_hours` declares `[0, 24, 48]`: contact at hour zero, widen the net after a day, once more after two, then stop. Stopping is the point. When the waves are exhausted and the request is still short, that is the signal a human is needed, not a reason to keep asking. Donors who declined are never asked again, and `max_contacts_per_donor_month` caps how often anyone hears from us.
+
+The schedule runs more often than any wave so the policy holds the cadence rather than the timer. Every pass is idempotent, so a tick with nothing to do costs a second.
 
 ## Running it locally
 
@@ -113,14 +126,24 @@ uv run donorpanel status        # confirms what is wired up
 
 ## Deployment
 
-Serverless, in `ap-southeast-2`:
+Live in `ap-southeast-2`:
 
 ```
 Telegram ──webhook──► API Gateway ──► Lambda ──► AgentCore Runtime (Asha)
                                         └─────► itself, async (the request graph)
-EventBridge Scheduler ──daily──────► Lambda (forecast)
+EventBridge Scheduler ──6 hourly───► Lambda (close, forecast, chase)
 CloudFront ──► S3 (landing page)
 ```
+
+| Resource | Identifier |
+| --- | --- |
+| AgentCore Runtime | `DonorPanelAsha` |
+| Lambda | `donorpanel`, arm64, 2 GB |
+| HTTP API | `ypw5w9sz6g.execute-api.ap-southeast-2.amazonaws.com` |
+| CloudFront | `d2ljcqat7a9ftn.cloudfront.net` |
+| Schedule | `donorpanel-daily-forecast`, `rate(6 hours)` |
+
+`deploy/` holds one rerunnable script per step: `roles`, `push`, `runtime`, `function`, `api`, `logs`, `schedule`, `site`. `deploy/deployed.json` records the image tag actually running, so the repository says what is deployed rather than only the console.
 
 **Asha runs on AgentCore Runtime** because she is one agent, one request, one response, with a dedicated session per person. **The request graph runs in Lambda** because it is the opposite shape: ten nodes, thirty to seventy seconds, and nobody waiting. Using each service for what it is actually for.
 
@@ -130,6 +153,8 @@ If AgentCore Runtime is unreachable, the Lambda answers in process with the iden
 
 ## Security and privacy, stated honestly
 
+- **Anyone can reach the bot.** `TELEGRAM_ALLOWED_CHAT_IDS` is empty so judges can use it, which means a stranger can register a donor and open a request that triggers real outreach. Outreach reaches nobody real: every seeded donor carries `TELEGRAM_DEMO_CHAT_ID`, so messages route to the operator's own phone.
+- **Logs keep 30 days and mask personal data.** A CloudWatch Logs data protection policy masks Name, Address, EmailAddress, DateOfBirth and US phone numbers on both log groups. AWS has no managed identifier for Aadhaar or Indian phone numbers, which is a reason not to store them rather than to rely on masking.
 - **Agent output never reaches logs.** `callback_handler=None` on every agent, because Strands prints reasoning to stdout by default and on Lambda stdout is CloudWatch. That would put donor names, dates of birth and blood groups into plaintext logs. A CloudWatch Logs data protection policy is the backstop.
 - **The bot token never reaches logs either.** httpx logs full request URLs at INFO and a Telegram URL carries the token in its path, so httpx is pinned to WARNING.
 - **Identity is federated from Telegram.** `from.id` identifies the speaker, `chat.id` is only where to reply. In a group those differ, and keying on the chat would give every member one shared identity and one shared memory.

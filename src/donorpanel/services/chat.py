@@ -16,7 +16,27 @@ def spoken(text: str) -> str:
     cleaned = THINKING.sub("", text)
     # A stray unclosed tag would otherwise leave everything after it visible.
     cleaned = re.sub(r"</?thinking>", "", cleaned, flags=re.IGNORECASE)
-    return cleaned.strip()
+    return plain(cleaned).strip()
+
+
+def plain(text: str) -> str:
+    """Telegram shows the characters, so a model that reaches for markdown produces
+    literal asterisks and dashes in a chat bubble. The prompt asks for none; this is
+    what happens when a model does it anyway."""
+    out = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        # A bullet becomes a sentence, so several become one flowing reply.
+        bullet = re.match(r"^[-*\u2022]\s+(.*)$", stripped)
+        if bullet:
+            item = bullet.group(1).rstrip(".")
+            out.append(f"{item}.")
+        else:
+            out.append(stripped)
+    joined = " ".join(p for p in out if p)
+    joined = re.sub(r"\*\*(.+?)\*\*", r"\1", joined)      # bold
+    joined = re.sub(r"(?<!\w)[*_](.+?)[*_](?!\w)", r"\1", joined)   # italics
+    return re.sub(r"\s{2,}", " ", joined)
 
 
 def reply(repo, text: str, sender: str, channel: str = "telegram",

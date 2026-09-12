@@ -1,12 +1,14 @@
 """Builds both images and pushes them to ECR. Idempotent: rerun to ship a change."""
 import base64
+import json
+import pathlib
 import subprocess
 import sys
 
 import boto3
 from botocore.exceptions import ClientError
 
-from deploy.settings import LAMBDA_REPO, REGION, RUNTIME_REPO, repo_uri
+from deploy.settings import LAMBDA_REPO, REGION, RUNTIME_REPO, image_tag, repo_uri
 
 ecr = boto3.client("ecr", region_name=REGION)
 
@@ -43,18 +45,27 @@ def login() -> None:
 
 
 def main() -> None:
+    tag = image_tag()
     for name, _ in IMAGES:
         ensure_repo(name)
     login()
+    record = {"tag": tag, "images": {}}
     for name, dockerfile in IMAGES:
-        uri = f"{repo_uri(name)}:latest"
-        print(f"  building {dockerfile}")
+        pinned_uri = f"{repo_uri(name)}:{tag}"
+        latest_uri = f"{repo_uri(name)}:latest"
+        print(f"  building {dockerfile} as {tag}")
         # Both targets are arm64: Runtime requires it, and Lambda runs Graviton.
         run("docker", "build", "--platform", "linux/arm64", "-f", dockerfile,
-            "-t", uri, ".")
-        print(f"  pushing  {uri}")
-        run("docker", "push", uri)
-    print("done")
+            "-t", pinned_uri, "-t", latest_uri, ".")
+        run("docker", "push", pinned_uri)
+        run("docker", "push", latest_uri)
+        print(f"  pushed   {name}:{tag}")
+        record["images"][name] = pinned_uri
+
+    # Committed, so the repository says what is running rather than only the console.
+    (pathlib.Path(__file__).parent / "deployed.json").write_text(
+        json.dumps(record, indent=2) + "\n")
+    print(f"done, tag {tag}")
 
 
 if __name__ == "__main__":

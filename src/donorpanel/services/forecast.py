@@ -17,13 +17,15 @@ def _today() -> date:
     return datetime.now(timezone.utc).date()
 
 
+# A draft was never real and a rejection was never accepted, so neither moves the cycle
+# forward. Everything else does, including SHORT: the date still passed, and the patient
+# is due again an interval later whether or not we found enough donors that time.
+NOT_A_TRANSFUSION = (RequestStatus.DRAFT, RequestStatus.REJECTED)
+
+
 def _last_needed_by(repo, patient_id: str):
-    """Most recent request that actually happened. A rejected or draft request is not
-    evidence a transfusion took place, so it must not move the cycle forward."""
-    happened = (RequestStatus.DISPATCHED, RequestStatus.FULFILLED,
-                RequestStatus.AWAITING_APPROVAL, RequestStatus.MATCHING)
     dates = [r.needed_by for r in repo.list_requests(patient_id)
-             if r.status in happened and r.needed_by]
+             if r.status not in NOT_A_TRANSFUSION and r.needed_by]
     return max(dates) if dates else None
 
 
@@ -65,7 +67,22 @@ def patient_ids(repo) -> list[str]:
             for k in repo.store.keys("patients/")]
 
 
-def tick(repo, today: date | None = None, runner=None) -> dict:
+def tick(repo, today: date | None = None, runner=None, channels=None) -> dict:
+    """One scheduled pass over the pool, in three parts.
+
+    Close first: a request whose date has passed is history, and leaving it open would
+    hide its patient from the forecast that follows.
+    """
+    from donorpanel.services import chase as chasing
+
+    settled = chasing.close(repo, today)
+    opened = open_due(repo, today, runner)
+    waves = chasing.chase(repo, channels=channels)
+    return {**opened, "closed": settled["closed"], "settled": settled["requests"],
+            "chased": waves["chased"], "waves": waves["waves"]}
+
+
+def open_due(repo, today: date | None = None, runner=None) -> dict:
     """Opens and runs a request for every patient who is due. One run per patient, and
     a failure on one must not stop the rest: they are unrelated people."""
     from donorpanel.graph import flow

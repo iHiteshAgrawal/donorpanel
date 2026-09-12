@@ -9,7 +9,7 @@ import time
 import boto3
 from botocore.exceptions import ClientError
 
-from deploy.settings import REGION, RUNTIME_NAME, RUNTIME_REPO, RUNTIME_ROLE, repo_uri, role_arn
+from deploy.settings import REGION, RUNTIME_NAME, RUNTIME_REPO, RUNTIME_ROLE, pinned, role_arn
 from donorpanel.config import config
 
 ctl = boto3.client("bedrock-agentcore-control", region_name=REGION)
@@ -53,7 +53,7 @@ def wait_ready(runtime_id: str, timeout: int = 600) -> str:
 
 
 def main() -> None:
-    artifact = {"containerConfiguration": {"containerUri": f"{repo_uri(RUNTIME_REPO)}:latest"}}
+    artifact = {"containerConfiguration": {"containerUri": pinned(RUNTIME_REPO)}}
     existing = find()
     if existing:
         runtime_id = existing["agentRuntimeId"]

@@ -40,7 +40,10 @@ export function Landing() {
   const [pool, setPool] = useState<Pool | null>(null)
 
   useEffect(() => {
-    void fetch('/api/public').then((r) => r.json()).then(setPool).catch(() => {})
+    // Served from CloudFront, which is a different origin from API Gateway, so a
+    // same-origin path would quietly 404 and leave the counts blank.
+    const base = import.meta.env.VITE_API_URL ?? ''
+    void fetch(`${base}/api/public`).then((r) => r.json()).then(setPool).catch(() => {})
   }, [])
 
   const link = `https://t.me/${pool?.bot ?? 'donorpanelbot'}`
