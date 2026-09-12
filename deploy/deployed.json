@@ -1,7 +1,7 @@
 {
-  "tag": "cc0fc4f-1789225524",
+  "tag": "0cfa28d-1789226195",
   "images": {
-    "bedrock-agentcore-donorpanel": "292368431051.dkr.ecr.ap-southeast-2.amazonaws.com/bedrock-agentcore-donorpanel:cc0fc4f-1789225524",
-    "donorpanel-lambda": "292368431051.dkr.ecr.ap-southeast-2.amazonaws.com/donorpanel-lambda:cc0fc4f-1789225524"
+    "bedrock-agentcore-donorpanel": "292368431051.dkr.ecr.ap-southeast-2.amazonaws.com/bedrock-agentcore-donorpanel:0cfa28d-1789226195",
+    "donorpanel-lambda": "292368431051.dkr.ecr.ap-southeast-2.amazonaws.com/donorpanel-lambda:0cfa28d-1789226195"
   }
 }

@@ -18,11 +18,19 @@ log = logging.getLogger(__name__)
 app = BedrockAgentCoreApp()
 
 
+# AgentCore keeps its own state per runtimeSessionId, and clearing the Strands session
+# store does not reach it. One session here degraded until every call timed out at 20s
+# while a fresh id answered in 5.7s, with no way to reset it by id. Bumping this abandons
+# the bad sessions and starts clean ones, so it is the lever for exactly that.
+SESSION_EPOCH = "2"
+
+
 def session_id(sender: str) -> str:
     """runtimeSessionId must be 33 to 256 characters and a Telegram id is about ten
     digits, so it cannot be passed through. Deterministic so the same person resumes
     the same session; the raw id travels in runtimeUserId, which is the field for it."""
-    return f"tg-{sender}-{hashlib.sha256(str(sender).encode()).hexdigest()[:24]}"
+    seed = f"{sender}:{SESSION_EPOCH}"
+    return f"tg-{sender}-{hashlib.sha256(seed.encode()).hexdigest()[:24]}"
 
 
 @app.entrypoint

@@ -249,3 +249,49 @@ def test_openrouter_without_a_key_fails_loudly(monkeypatch):
                                 openrouter_api_key=None))
     with pt.raises(RuntimeError, match="OPENROUTER_API_KEY"):
         model_module.llm()
+
+
+def test_the_pool_is_only_seeded_once_per_process(monkeypatch):
+    """Two S3 reads per invocation to confirm seed data that cannot vanish. Warm
+    containers handle most messages, so this was pure latency on the reply path."""
+    from donorpanel.services import pool
+
+    reads = []
+
+    class Panel:
+        def get_patient(self, pid):
+            reads.append(pid)
+            return object()
+
+        def get_request(self, rid):
+            reads.append(rid)
+            return object()
+
+    monkeypatch.setattr(pool, "repo", Panel)
+    monkeypatch.setattr(pool, "_seeded", False)
+    pool.ensure()
+    first = len(reads)
+    pool.ensure()
+    pool.ensure()
+
+    assert first > 0
+    assert len(reads) == first
+
+
+def test_memory_is_written_off_the_reply_path(monkeypatch):
+    """The write costs about 1.5s and the answer does not depend on it."""
+    import threading
+
+    from donorpanel.services import chat as chat_module
+
+    gate, done = threading.Event(), []
+
+    def slow(*a, **k):
+        gate.wait(timeout=5)
+        done.append(1)
+
+    monkeypatch.setattr(chat_module.memory, "remember", slow)
+    chat_module._remember_later("s", "chat-s", "hi", "hello")
+    # Returns while the write is still blocked, which is the whole point.
+    assert done == []
+    gate.set()

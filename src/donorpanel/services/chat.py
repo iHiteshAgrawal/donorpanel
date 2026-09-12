@@ -1,5 +1,6 @@
 import logging
 import re
+import threading
 
 from donorpanel.adapters import memory
 from donorpanel.adapters.storage import session_manager
@@ -61,6 +62,18 @@ def reply(repo, text: str, sender: str, channel: str = "telegram",
         on_answer(answer)
 
     # Conversation is exactly the shape USER_PREFERENCE mines, so chat is the richest
-    # source of standing preferences the system has.
-    memory.remember(str(sender), session, [("USER", text), ("ASSISTANT", answer)])
+    # source of standing preferences the system has. Off the reply path: it costs about
+    # 1.5s, nothing in the answer depends on it, and the session store is what actually
+    # carries the thread, so a lost write costs enrichment rather than correctness.
+    _remember_later(str(sender), session, text, answer)
     return answer
+
+
+def _remember_later(sender: str, session: str, text: str, answer: str) -> None:
+    def write() -> None:
+        try:
+            memory.remember(sender, session, [("USER", text), ("ASSISTANT", answer)])
+        except Exception:
+            log.warning("memory write failed", exc_info=True)
+
+    threading.Thread(target=write, daemon=True).start()

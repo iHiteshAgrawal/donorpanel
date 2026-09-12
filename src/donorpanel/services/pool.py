@@ -25,10 +25,18 @@ def repo() -> PanelRepository:
     return PanelRepository(store=store(PREFIX))
 
 
+_seeded = False
+
+
 def ensure(target=None) -> PanelRepository:
     """Idempotent. A registrant needs somewhere to be useful the moment they join,
     so the public pool always carries one patient with one open request."""
+    global _seeded
     panel = target or repo()
+    if target is None and _seeded:
+        # Two S3 reads per invocation to confirm seed data that cannot vanish. Warm
+        # containers handle most messages, so this was pure latency on the reply path.
+        return panel
     if panel.get_patient(PATIENT["patient_id"]) is None:
         panel.put_patient(Patient(**PATIENT, lat=11.0168, lon=76.9558))
     if panel.get_request(OPEN_REQUEST) is None:
@@ -37,6 +45,8 @@ def ensure(target=None) -> PanelRepository:
             policy_id=PATIENT["policy_id"], units_needed=2,
             needed_by="2026-12-20", source=RequestSource.SCHEDULED,
             status=RequestStatus.MATCHING))
+    if target is None:
+        _seeded = True
     return panel
 
 
