@@ -16,6 +16,3 @@ web/.env
 
 # pitch video build artifacts
 archive/
-
-# post figure renders
-post/figures/

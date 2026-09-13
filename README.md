@@ -7,6 +7,8 @@
 | Try it | [t.me/donorpanelbot](https://t.me/donorpanelbot) |
 | Site | [d2ljcqat7a9ftn.cloudfront.net](https://d2ljcqat7a9ftn.cloudfront.net) |
 
+![DonorPanel architecture: Telegram and EventBridge into one Lambda with four modes, Asha on AgentCore Runtime, and a ten node Strands graph whose gate either dispatches or asks a coordinator](assets/architecture.png)
+
 Patients with thalassemia, sickle cell disease and rare phenotypes need matched blood on a recurring basis, often every three weeks, for life. The pool of donors who can match them is systematically smaller than the population that needs them, because matching follows ancestry and donor registries do not mirror their patients. Registries are large but mostly unreachable, so the recruiting burden falls on families, permanently.
 
 DonorPanel holds the donor network so no family has to browse it, and does the asking so no family has to.
@@ -94,6 +96,66 @@ Every six hours, three passes over the pool. All deterministic code, no agent in
 **Chase.** `outreach.escalation_hours` declares `[0, 24, 48]`: contact at hour zero, widen the net after a day, once more after two, then stop. Stopping is the point. When the waves are exhausted and the request is still short, that is the signal a human is needed, not a reason to keep asking. Donors who declined are never asked again, and `max_contacts_per_donor_month` caps how often anyone hears from us.
 
 The schedule runs more often than any wave so the policy holds the cadence rather than the timer. Every pass is idempotent, so a tick with nothing to do costs a second.
+
+## What Strands actually does here
+
+Worth spelling out, because "built with Strands" can mean one `Agent()` call or it can mean this.
+
+### The graph, and why eight of ten nodes are not agents
+
+`GraphBuilder` wires ten nodes. Only `verify` and `compose` call a model. The other eight are
+plain Python subclassing `MultiAgentBase` through one shared adapter, `JsonNode` in
+`graph/nodes/base.py`, which turns a dict-returning `run()` into the `NodeResult` shape a Graph
+expects.
+
+Two things that adapter gets right and are easy to get wrong:
+
+- `run()` is synchronous and does blocking boto3 and model I/O, so it goes through
+  `asyncio.to_thread`. Calling it directly freezes the event loop for the whole node.
+- A node failure surfaces as a `FAILED` NodeResult the graph can route on, never as an exception.
+  An exception kills the run and takes the ability to branch on failure with it.
+
+Edge conditions read a JSON block out of the upstream node's output, never free text. `find_block`
+scans for balanced blocks and takes the last one carrying the key, because a node's input carries
+every upstream node's output concatenated and a naive first-brace-to-last-brace parse spans two
+objects. `task_text` exists because a Graph hands a node a list of ContentBlock dicts rather than
+a string, and `str()` on that escapes the newlines.
+
+### Hooks, and picking the right event
+
+`MemoryWriter` in `graph/hooks.py` is a `HookProvider` registered on `AfterNodeCallEvent`. It
+writes a finished run to AgentCore Memory as the graph reaches a terminal node, so no node needs
+to know memory exists.
+
+Choosing that event was not obvious, and the two alternatives are both dead ends:
+
+- `AfterInvocationEvent.result` is `None` when an agent uses structured output. Both of ours do,
+  so a hook there would have read nothing.
+- `AfterMultiAgentInvocationEvent` is constructed without `invocation_state`, so it cannot see the
+  repository or the request id.
+
+The callback is wrapped in `try`/`except` for a specific reason: the registry propagates callback
+exceptions to the caller, and this event fires from inside a `finally` block. An unguarded hook
+therefore kills the run **and** masks whatever actually failed. Memory is never worth that.
+
+### Everything else in use
+
+| Primitive | What it does here |
+| --- | --- |
+| `Agent` | Asha, the request verifier, the outreach composer |
+| structured output | The verifier returns a typed `Verdict`, not prose to parse |
+| `callback_handler=None` | Strands prints to stdout by default, and on Lambda stdout is CloudWatch |
+| `@tool`, `ToolContext` | Ten conversational tools, plus `request_history` on the verifier |
+| `invocation_state` | Carries the repository and request id through every node without globals |
+| `S3SessionManager` | The conversation thread per person, so Asha resumes rather than restarts |
+| `FileSessionManager` | The same thread on disk for local development |
+| `ModelRetryStrategy` | Bounded retry on a throttled model. Defaults sleep 4, 8, 16, 32 then 64 seconds |
+| `BedrockModel`, `OpenAIModel` | Two providers behind one constructor in `agents/model.py` |
+| `EventLoopMetrics` | Per run telemetry on every node result |
+
+`SESSION_EPOCH` in `entrypoints/runtime.py` is ours rather than the SDK's, and exists because
+AgentCore keeps its own state per `runtimeSessionId` that clearing the session store does not
+reach. Bumping it abandons a degraded session.
 
 ## Running it locally
 
@@ -236,5 +298,10 @@ The suite avoids AWS: storage tests use moto or a temp directory, agents are stu
 | `adapters/` | How we reach the outside: `channels/`, `storage/`, `memory`, `geo` |
 | `policies/` | Condition rules as YAML, not code |
 | `web/` | The landing page: Vite, React, Tailwind v4 |
+
+Everything under `src/donorpanel/` above. Outside it: `deploy/` holds one rerunnable script per
+step, `tests/` the suite, and `archive/` the things that are finished rather than live, including
+the pitch video pipeline, the builder.aws.com post, the architecture diagram and earlier design
+notes that the code has since moved past.
 
 Dependencies point inward. `entrypoints` and `adapters` know about `domain`; `domain` knows about neither.
