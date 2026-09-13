@@ -7,7 +7,7 @@
 | Try it | [t.me/donorpanelbot](https://t.me/donorpanelbot) |
 | Site | [d2ljcqat7a9ftn.cloudfront.net](https://d2ljcqat7a9ftn.cloudfront.net) |
 
-![DonorPanel architecture: Telegram and EventBridge into one Lambda with four modes, Asha on AgentCore Runtime, and a ten node Strands graph whose gate either dispatches or asks a coordinator](assets/architecture.png)
+![DonorPanel architecture: Telegram and EventBridge into one Lambda with four modes, Asha on AgentCore Runtime, and a ten node Strands graph whose gate either dispatches or asks a coordinator](/architecture.png)
 
 Patients with thalassemia, sickle cell disease and rare phenotypes need matched blood on a recurring basis, often every three weeks, for life. The pool of donors who can match them is systematically smaller than the population that needs them, because matching follows ancestry and donor registries do not mirror their patients. Registries are large but mostly unreachable, so the recruiting burden falls on families, permanently.
 
