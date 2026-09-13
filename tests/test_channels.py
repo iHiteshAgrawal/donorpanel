@@ -76,9 +76,9 @@ async def test_two_people_in_one_group_are_two_identities(monkeypatch):
 
 
 async def test_a_private_chat_still_answers_itself(monkeypatch):
-    got = await poll_with(monkeypatch, [update(3, 8911353204, 8911353204, "hi")])
-    assert got[0].sender == "8911353204"
-    assert got[0].reply_to == "8911353204"
+    got = await poll_with(monkeypatch, [update(3, 1000000001, 1000000001, "hi")])
+    assert got[0].sender == "1000000001"
+    assert got[0].reply_to == "1000000001"
 
 
 async def test_bot_messages_are_ignored(monkeypatch):

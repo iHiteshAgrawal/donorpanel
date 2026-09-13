@@ -31,8 +31,8 @@ def test_webhook_answers_and_sends(monkeypatch):
     monkeypatch.setattr(handler, "_send", lambda ch, to, body: sent.append((ch, to, body)))
     out = handler.handler(http(UPDATE))
     assert out["statusCode"] == 200
-    assert asked == [("8911353204", "Hi, what is this?")]
-    assert sent == [("telegram", "8911353204", "hello back")]
+    assert asked == [("1000000001", "Hi, what is this?")]
+    assert sent == [("telegram", "1000000001", "hello back")]
 
 
 def test_a_launch_triggers_a_second_invocation(monkeypatch):
@@ -41,7 +41,7 @@ def test_a_launch_triggers_a_second_invocation(monkeypatch):
                         lambda *a, **kw: {"text": "searching", "launch": {"patient_id": "p-1"}})
     monkeypatch.setattr(handler, "_send", lambda *a: None)
     monkeypatch.setattr(handler, "_self_invoke", later.append)
-    handler.reply({"sender": "8911353204", "text": "hi", "reply_to": "8911353204",
+    handler.reply({"sender": "1000000001", "text": "hi", "reply_to": "1000000001",
                    "channel": "telegram"})
     assert later[0]["mode"] == "search"
     assert later[0]["ask"] == {"patient_id": "p-1"}
@@ -61,7 +61,7 @@ def test_the_webhook_acknowledges_without_calling_the_model(monkeypatch):
     assert asked == []
     assert queued[0]["mode"] == "reply"
     assert queued[0]["text"] == "Hi, what is this?"
-    assert queued[0]["sender"] == "8911353204"
+    assert queued[0]["sender"] == "1000000001"
 
 
 def test_the_wrong_secret_is_refused(monkeypatch):
@@ -109,9 +109,9 @@ def test_a_crash_never_reaches_telegram_as_a_500(monkeypatch):
 def test_session_id_satisfies_the_runtime_length_rule():
     from donorpanel.entrypoints.runtime import session_id
 
-    made = session_id("8911353204")
+    made = session_id("1000000001")
     assert 33 <= len(made) <= 256
-    assert made == session_id("8911353204")
+    assert made == session_id("1000000001")
     assert made != session_id("8911353205")
 
 

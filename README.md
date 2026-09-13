@@ -234,25 +234,17 @@ If AgentCore Runtime is unreachable, the Lambda answers in process with the iden
 
 ### Answering without making Telegram wait
 
-An API Gateway HTTP API caps an integration at **30 seconds**, and that is the hard maximum, not
-a setting. A model call plus a session load runs past it, so the reply arrived as a 503. Telegram
-reads a 503 as "send it again" and redelivers the same message every couple of minutes, for up to
-a day. One greeting became thirteen Lambda invocations, each billed for a full 300 second timeout,
-and 196 real invocations produced **3,737 throttle events**, which is what exhausted the Bedrock
-daily cap in the first place.
+An API Gateway HTTP API caps an integration at **30 seconds**, and that is the hard maximum rather than a setting. A model call plus a session load runs past it, and Telegram treats a slow webhook as a signal to redeliver the same message every couple of minutes.
 
-Four things were wrong, and all four are fixed:
+So the webhook never does the work. It checks the shared secret, acknowledges in about **0.03s**, and invokes the same Lambda asynchronously. The answer reaches Telegram as a fresh outbound call a few seconds later, by which time the original request is long closed. API Gateway is a one way door: replies do not travel back through it.
 
-| Fault | Fix |
-| --- | --- |
-| The webhook answered synchronously | It acknowledges in **0.03s**, then invokes itself asynchronously and replies over the Telegram API |
-| Strands retried a throttle 4, 8, 16, 32 then 64 seconds, above botocore's own retries | Both layers bounded, in `agents/model.py`. `max_attempts` is counted as retries *on top of* the first call, so 1 means two attempts |
-| A failed model call produced silence | `apology()` distinguishes a throttle from a genuine fault, because "try again shortly" is a lie for one of them |
-| AgentCore kept degraded state per `runtimeSessionId`, unreachable by clearing the session store | `SESSION_EPOCH` in `entrypoints/runtime.py`. Bumping it abandons bad sessions |
+Three things keep that path bounded:
 
-End to end, the reply went from never arriving to **3.8 seconds**. The remaining cost is roughly
-3.5s of model call; `pool.ensure()` no longer re-reads S3 on warm containers and the memory write
-happens after the answer is sent, since nothing in the reply depends on it.
+- **Both retry layers are capped**, in `agents/model.py`. Strands retries a throttled model above botocore's own retries, and botocore counts `max_attempts` as retries *on top of* the first call, so `1` means two attempts.
+- **A failed model call still answers.** `apology()` separates a throttle from a genuine fault, because "try again shortly" is only true for one of them. Silence is the worst reply available when somebody is asking for blood.
+- **`SESSION_EPOCH` versions the AgentCore session id.** AgentCore keeps state per `runtimeSessionId` that clearing the session store does not reach, so bumping the epoch abandons a degraded session.
+
+A reply takes about four seconds end to end, most of which is the model call.
 
 ## Security and privacy, stated honestly
 
@@ -274,7 +266,6 @@ happens after the answer is sent, since nothing in the reply depends on it.
 - **No cross-channel identity.** The same human on email and Telegram are two unrelated identities.
 - **Email is outbound only.** Receiving mail through SES needs a verified domain with MX records, so there is no email equivalent of the Telegram conversation.
 - **No evaluation harness.** Agent behaviour is covered by unit tests and stubs, not by scored evaluation runs.
-- **Cognito is gone.** It existed for a coordinator console that no longer exists.
 
 ## Development
 
