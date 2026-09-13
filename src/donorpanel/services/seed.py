@@ -1,7 +1,16 @@
 from datetime import datetime, timedelta, timezone
 
 from donorpanel.config import config
-from donorpanel.domain import Condition, Donor, Patient
+from donorpanel.domain import (
+    Condition,
+    Contact,
+    ContactStatus,
+    Donor,
+    Patient,
+    Request,
+    RequestSource,
+    RequestStatus,
+)
 
 PATIENT = {
     "patient_id": "p-ravi", "name": "Ravi", "condition": Condition.THALASSEMIA,
@@ -82,3 +91,37 @@ def coordinates_from(repo) -> dict[str, tuple[float, float]]:
         if donor and donor.lat is not None:
             found[city] = (donor.lat, donor.lon)
     return found
+
+
+# One transfusion that already happened, so the pool reads as a network that has done the
+# work rather than an empty directory. Every count on the landing page comes from these
+# rows, so inventing the numbers there instead would make the page lie about the store.
+HISTORY_REQUEST = "r-public-past"
+HISTORY = [
+    ("d-asha", 1, ContactStatus.DONATED, 9, 9),
+    ("d-nithya", 2, ContactStatus.DONATED, 9, 8),
+    ("d-vikram", 3, ContactStatus.PLEDGED, 9, 8),
+    ("d-divya", 4, ContactStatus.DECLINED, 9, 7),
+    ("d-kavya", 5, ContactStatus.NO_RESPONSE, 9, None),
+]
+
+
+def history(repo) -> int:
+    """A settled request from a fortnight ago with its real contact rows."""
+    repo.put_request(Request(
+        request_id=HISTORY_REQUEST, patient_id=PATIENT["patient_id"],
+        policy_id=PATIENT["policy_id"], units_needed=2,
+        needed_by=ago(12), source=RequestSource.SCHEDULED,
+        status=RequestStatus.FULFILLED, units_pledged=2,
+        created_at=f"{ago(14)}T09:00:00+00:00", updated_at=f"{ago(12)}T18:30:00+00:00"))
+
+    rows = []
+    for donor_id, rank, status, asked, answered in HISTORY:
+        donor = repo.get_donor(donor_id)
+        rows.append(Contact(
+            request_id=HISTORY_REQUEST, donor_id=donor_id, status=status,
+            channel=donor.channel if donor else "telegram", rank=rank,
+            contacted_at=f"{ago(asked)}T09:05:00+00:00",
+            responded_at=f"{ago(answered)}T10:20:00+00:00" if answered else None))
+    repo.put_contacts(rows)
+    return len(rows)

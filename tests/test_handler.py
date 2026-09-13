@@ -295,3 +295,22 @@ def test_memory_is_written_off_the_reply_path(monkeypatch):
     # Returns while the write is still blocked, which is the whole point.
     assert done == []
     gate.set()
+
+
+def test_seeded_history_makes_the_public_counts_real(tmp_path, monkeypatch):
+    """Every landing page number is read back out of the store, so seeding history is
+    what makes 'reached' true rather than decorative."""
+    from donorpanel.adapters.storage import FileStore, PanelRepository
+    from donorpanel.services import seed
+
+    repo = PanelRepository(store=FileStore(root=str(tmp_path)))
+    seed.populate(repo)
+    assert seed.history(repo) == len(seed.HISTORY)
+
+    contacts = repo.list_contacts(seed.HISTORY_REQUEST)
+    assert len(contacts) == len(seed.HISTORY)
+    assert sum(1 for c in contacts if c.contacted_at) == len(seed.HISTORY)
+    request = repo.get_request(seed.HISTORY_REQUEST)
+    assert request.status.value == "fulfilled"
+    # A donor who never answered must not carry a response time.
+    assert any(c.responded_at is None for c in contacts)

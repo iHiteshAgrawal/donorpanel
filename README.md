@@ -69,6 +69,20 @@ Writes take two paths on purpose, because they have very different latencies:
 
 Writing a record we already hold, instead of paying a model to re-derive it from a transcript, is also what the AWS cost guidance recommends. On the next run `compose` reads that memory back with a single prefix query and folds it into its brief.
 
+### Which model
+
+One constructor in `agents/model.py` returns whichever provider `MODEL_PROVIDER` names, so all
+three agents switch together and nothing else in the codebase knows which one is live.
+
+**Bedrock is the intended provider** and the Bedrock path is complete. The deployment currently
+runs on OpenRouter because the AWS account hit a Bedrock daily token cap that no model or region
+escapes: Nova Pro, Lite and Micro, with and without the inference profile prefix, in
+`ap-southeast-2`, `us-east-1` and `us-west-2`, all return the same `Too many tokens per day`.
+Switching back is one line in `.env` and a redeploy.
+
+The cap was partly self-inflicted, and the cause is worth stating because the fix is in this
+repository. See [Answering without making Telegram wait](#answering-without-making-telegram-wait).
+
 ### The scheduled tick
 
 Every six hours, three passes over the pool. All deterministic code, no agent involved.
@@ -107,7 +121,10 @@ uv run donorpanel status        # confirms what is wired up
 | Key | Needed for | Notes |
 | --- | --- | --- |
 | `AWS_REGION` | everything | `ap-southeast-2`. The account's SCP blocks S3 in `us-east-1`. |
+| `MODEL_PROVIDER` | the agents | `bedrock` or `openrouter`. See [Which model](#which-model). |
 | `BEDROCK_MODEL_ID` | the agents | `apac.amazon.nova-pro-v1:0`. |
+| `OPENROUTER_API_KEY` | the fallback provider | Only read when `MODEL_PROVIDER=openrouter`. |
+| `OPENROUTER_MODEL_ID` | the fallback provider | `anthropic/claude-sonnet-4-5`. |
 | `DONORPANEL_BUCKET` | storage | Unset falls back to `data/local` on disk. |
 | `AGENTCORE_MEMORY_ID` | memory | Unset disables memory cleanly; everything else still works. |
 | `TELEGRAM_BOT_TOKEN` | the product | From `@BotFather`. |
@@ -129,8 +146,10 @@ uv run donorpanel status        # confirms what is wired up
 Live in `ap-southeast-2`:
 
 ```
-Telegram ──webhook──► API Gateway ──► Lambda ──► AgentCore Runtime (Asha)
-                                        └─────► itself, async (the request graph)
+Telegram ──webhook──► API Gateway ──► Lambda ──200 in 0.03s, then async to itself
+                                                   │
+                                                   ├──► AgentCore Runtime (Asha) ──► reply
+                                                   └──► the request graph
 EventBridge Scheduler ──6 hourly───► Lambda (close, forecast, chase)
 CloudFront ──► S3 (landing page)
 ```
@@ -151,6 +170,28 @@ The webhook replaces a polling loop. Polling needs one process running forever, 
 
 If AgentCore Runtime is unreachable, the Lambda answers in process with the identical code. A Runtime outage costs the architecture, not the demo.
 
+### Answering without making Telegram wait
+
+An API Gateway HTTP API caps an integration at **30 seconds**, and that is the hard maximum, not
+a setting. A model call plus a session load runs past it, so the reply arrived as a 503. Telegram
+reads a 503 as "send it again" and redelivers the same message every couple of minutes, for up to
+a day. One greeting became thirteen Lambda invocations, each billed for a full 300 second timeout,
+and 196 real invocations produced **3,737 throttle events**, which is what exhausted the Bedrock
+daily cap in the first place.
+
+Four things were wrong, and all four are fixed:
+
+| Fault | Fix |
+| --- | --- |
+| The webhook answered synchronously | It acknowledges in **0.03s**, then invokes itself asynchronously and replies over the Telegram API |
+| Strands retried a throttle 4, 8, 16, 32 then 64 seconds, above botocore's own retries | Both layers bounded, in `agents/model.py`. `max_attempts` is counted as retries *on top of* the first call, so 1 means two attempts |
+| A failed model call produced silence | `apology()` distinguishes a throttle from a genuine fault, because "try again shortly" is a lie for one of them |
+| AgentCore kept degraded state per `runtimeSessionId`, unreachable by clearing the session store | `SESSION_EPOCH` in `entrypoints/runtime.py`. Bumping it abandons bad sessions |
+
+End to end, the reply went from never arriving to **3.8 seconds**. The remaining cost is roughly
+3.5s of model call; `pool.ensure()` no longer re-reads S3 on warm containers and the memory write
+happens after the answer is sent, since nothing in the reply depends on it.
+
 ## Security and privacy, stated honestly
 
 - **Anyone can reach the bot.** `TELEGRAM_ALLOWED_CHAT_IDS` is empty so judges can use it, which means a stranger can register a donor and open a request that triggers real outreach. Outreach reaches nobody real: every seeded donor carries `TELEGRAM_DEMO_CHAT_ID`, so messages route to the operator's own phone.
@@ -160,6 +201,9 @@ If AgentCore Runtime is unreachable, the Lambda answers in process with the iden
 - **Identity is federated from Telegram.** `from.id` identifies the speaker, `chat.id` is only where to reply. In a group those differ, and keying on the chat would give every member one shared identity and one shared memory.
 - **There is no authorization model.** Anyone who can reach the bot can open a request and cause real outreach. The webhook secret proves Telegram sent the message; it proves nothing about the human behind it. AgentCore Policy with Cedar rules at a Gateway is the right answer and is not built.
 - **Namespaces are organization, not access control.** The real boundary AWS documents is an IAM condition on `bedrock-agentcore:actorId` bound to a per-user principal. One process holding one credential cannot have that.
+- **The OpenRouter key sits in plain environment variables** on the Lambda and the AgentCore
+  Runtime, exactly as the Telegram bot token does. Secrets Manager with a runtime lookup is the
+  right answer and is not built; this is a demo account and both credentials are revocable.
 - Aadhaar numbers are never stored. Verification discards them.
 
 ## Not built yet
@@ -184,7 +228,7 @@ The suite avoids AWS: storage tests use moto or a temp directory, agents are stu
 | Path | Purpose |
 | --- | --- |
 | `entrypoints/` | How the outside gets in: `cli`, `lambda_fn`, `runtime`, `poller`, `devserver` |
-| `services/` | Application logic: `chat`, `outreach`, `forecast`, `pool`, `seed` |
+| `services/` | Application logic: `chat`, `outreach`, `forecast`, `chase`, `pool`, `seed` |
 | `graph/` | The Strands graph: `flow`, `hooks`, and `nodes/` one class each |
 | `agents/` | The three model-backed agents: `assistant`, `composer`, `verifier` |
 | `tools/` | What Asha can actually do, bound per conversation |
