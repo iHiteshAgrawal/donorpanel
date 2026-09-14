@@ -314,3 +314,108 @@ def test_seeded_history_makes_the_public_counts_real(tmp_path, monkeypatch):
     assert request.status.value == "fulfilled"
     # A donor who never answered must not carry a response time.
     assert any(c.responded_at is None for c in contacts)
+
+
+def test_a_seeded_donor_is_not_mistaken_for_the_person_messaging(tmp_path):
+    """Seeded demo donors all carry the operator's contact address so outreach reaches a real
+    phone. Matching identity on address therefore reported every visitor as the first seeded
+    donor, and registering would have overwritten her."""
+    from donorpanel.adapters.storage import FileStore, PanelRepository
+    from donorpanel.services import seed
+    from donorpanel.tools.visitor import donor_id_for, mine
+
+    repo = PanelRepository(store=FileStore(root=str(tmp_path)))
+    seed.populate(repo)
+    sender = "8911353204"
+    for donor in repo.list_donors():
+        donor.address = sender
+        repo.put_donor(donor)
+
+    assert mine(repo, sender) is None
+
+    from donorpanel.domain import Donor
+    repo.put_donor(Donor(donor_id=donor_id_for(sender, "O+"), name="Hitesh", blood_group="O+",
+                         region="IN-TN", channel="telegram", address=sender, city="Dhanbad",
+                         consent=True))
+    found = mine(repo, sender)
+    assert found is not None and found.name == "Hitesh"
+
+
+def test_the_person_sees_a_typing_indicator_while_she_thinks(monkeypatch):
+    """A reply takes about four seconds and a graph run takes most of a minute. Without
+    this the chat just sits there and reads as broken."""
+    typed = []
+    from donorpanel.services import chat as chat_module
+
+    no_runtime(monkeypatch)
+    monkeypatch.setattr(handler, "_typing", lambda ch, to: typed.append(to))
+    monkeypatch.setattr(handler, "_send", lambda *a: None)
+    monkeypatch.setattr(chat_module, "reply", lambda *a, **k: "hello back")
+
+    handler.reply({"sender": "1000000001", "text": "hi", "reply_to": "1000000001",
+                   "channel": "telegram"})
+    assert typed == ["1000000001"]
+
+
+def test_a_channel_that_cannot_type_is_not_asked_to(monkeypatch):
+    """Email has no typing indicator, so the base class no-ops rather than every caller
+    checking which channel it holds."""
+    import asyncio
+
+    from donorpanel.adapters.channels.base import Channel
+
+    assert asyncio.run(Channel.typing(object(), "someone")) is None
+
+
+def test_she_states_the_real_distance_rather_than_guessing(tmp_path):
+    """Ranking already measures this. Without it in the tool, the model answered "quite far"
+    from its own idea of Indian geography."""
+    from donorpanel.adapters.storage import FileStore, PanelRepository
+    from donorpanel.domain import Donor
+    from donorpanel.services import seed
+    from donorpanel.tools.visitor import donor_id_for, who_needs_blood
+
+    repo = PanelRepository(store=FileStore(root=str(tmp_path)))
+    seed.populate(repo, coordinates={"Coimbatore": (11.0168, 76.9558)})
+    sender = "1000000001"
+    repo.put_donor(Donor(donor_id=donor_id_for(sender, "O+"), name="Hitesh", blood_group="O+",
+                         region="IN-TN", channel="telegram", address=sender, city="Dhanbad",
+                         consent=True, lat=23.79595, lon=86.43061))
+
+    class Ctx:
+        def __init__(self):
+            self.invocation_state = {"repo": repo, "sender": sender}
+
+    said = who_needs_blood._tool_func(tool_context=Ctx())
+    assert "1,739 km" in said and "Dhanbad" in said
+
+
+def test_a_donor_who_offers_unprompted_is_actually_recorded(tmp_path):
+    """record_answer used to need a contact row that only outreach creates, so a donor who
+    volunteered got 'no open request' while the agent still said it had been noted."""
+    from donorpanel.adapters.storage import FileStore, PanelRepository
+    from donorpanel.domain import ContactStatus, Donor
+    from donorpanel.services import pool, seed
+    from donorpanel.tools.donor import record_answer
+    from donorpanel.tools.visitor import donor_id_for
+
+    repo = PanelRepository(store=FileStore(root=str(tmp_path)))
+    seed.populate(repo)
+    pool.ensure(repo)
+    sender = "1000000001"
+    repo.put_donor(Donor(donor_id=donor_id_for(sender, "O+"), name="Hitesh", blood_group="O+",
+                         region="IN-TN", channel="telegram", address=sender, city="Palakkad",
+                         consent=True, lat=10.77581, lon=76.65813))
+
+    class Ctx:
+        def __init__(self):
+            self.invocation_state = {"repo": repo, "sender": sender}
+
+    said = record_answer._tool_func(willing=True, tool_context=Ctx())
+    assert "pledged" in said.lower()
+
+    rows = [c for c in repo.list_contacts(pool.OPEN_REQUEST)
+            if c.donor_id == donor_id_for(sender, "O+")]
+    assert len(rows) == 1
+    assert rows[0].status is ContactStatus.PLEDGED
+    assert rows[0].note == "volunteered" or rows[0].responded_at

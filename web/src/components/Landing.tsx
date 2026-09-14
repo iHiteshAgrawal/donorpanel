@@ -69,7 +69,14 @@ export function Landing() {
           <span className="text-[17px] font-semibold tracking-tight">Asha</span>
         </div>
         <nav className="flex items-center gap-5 text-[14px]" style={{ color: SOFT }}>
-          <a href="/console" className="transition-opacity hover:opacity-60">Watch her work</a>
+          <a
+            href="https://www.linkedin.com/in/ihiteshagrawal/"
+            target="_blank"
+            rel="noreferrer"
+            className="transition-opacity hover:opacity-60"
+          >
+            Contact
+          </a>
           <a
             href={link}
             target="_blank"
@@ -229,13 +236,26 @@ export function Landing() {
             model. Everything that decides routing is ordinary code, so the same request
             always takes the same path.
           </p>
-          <a
-            href="/console"
-            className="mt-7 inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-[15px] font-semibold transition-opacity hover:opacity-70"
-            style={{ border: `1px solid ${INK}`, color: INK }}
-          >
-            Watch a request move through it
-          </a>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <a
+              href="https://builder.aws.com/content/3JHvpNOMEiXXRoUMphkEk5ZZShh/agents-for-humans"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center rounded-full px-6 py-3.5 text-[15px] font-semibold transition-opacity hover:opacity-70"
+              style={{ border: `1px solid ${INK}`, color: INK }}
+            >
+              How it was built
+            </a>
+            <a
+              href="https://github.com/iHiteshAgrawal/donorpanel"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center rounded-full px-6 py-3.5 text-[15px] font-semibold transition-opacity hover:opacity-70"
+              style={{ border: `1px solid ${LINE}`, color: SOFT }}
+            >
+              Read the code
+            </a>
+          </div>
         </section>
       </main>
 

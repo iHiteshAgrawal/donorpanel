@@ -30,6 +30,19 @@ class TelegramChannel(Channel):
         result = response.json().get("result", {})
         return DeliveryResult(delivered=True, channel=self.name, reference=str(result.get("message_id")))
 
+    async def typing(self, recipient: str) -> None:
+        """Telegram clears the indicator after about five seconds or when a message lands,
+        so this is sent once per answer rather than held open. Never raises: a missing
+        typing dot must not cost somebody their reply."""
+        if not self.available():
+            return
+        url = API.format(token=self.token, method="sendChatAction")
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.post(url, json={"chat_id": recipient, "action": "typing"})
+        except Exception:  # noqa: BLE001
+            return
+
     def webhook_update(self, update: dict) -> Inbound | None:
         """Same shaping as poll(), for updates Telegram pushes to us instead.
 

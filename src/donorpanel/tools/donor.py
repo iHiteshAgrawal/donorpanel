@@ -4,6 +4,7 @@ from strands import ToolContext, tool
 
 from donorpanel.domain import ContactStatus, RequestStatus
 from donorpanel.domain.matching import ineligible_reason
+from donorpanel.tools.visitor import mine
 
 
 def _ctx(tool_context: ToolContext):
@@ -12,7 +13,7 @@ def _ctx(tool_context: ToolContext):
     state = tool_context.invocation_state
     repo = state["repo"]
     sender = str(state.get("sender") or "")
-    donor = next((d for d in repo.list_donors() if d.address == sender), None)
+    donor = mine(repo, sender)
     return repo, (donor.donor_id if donor else None)
 
 
@@ -32,6 +33,36 @@ def _contacts(repo, donor_id: str, statuses=ASKED):
 
 def _unanswered(repo, donor_id: str):
     return _contacts(repo, donor_id, (ContactStatus.SENT,))
+
+
+def _volunteered(repo, donor_id: str):
+    """An open request this donor could help with, as a contact row created on the spot.
+
+    Outreach normally creates the row first and the donor answers it. A donor who offers
+    unprompted has no row, so one is opened here and marked as reached, which is true: they
+    are talking to us right now.
+    """
+    from donorpanel.domain import Contact, compatible_groups
+
+    donor = next((d for d in repo.list_donors() if d.donor_id == donor_id), None)
+    if donor is None:
+        return []
+    # Not in_flight(), which means awaiting approval or already dispatched. A request still
+    # matching has nobody assigned yet, and is exactly the one a volunteer can help with.
+    ids = [k.rsplit("/", 1)[-1].removesuffix(".json") for k in repo.store.keys("requests/")]
+    open_now = [r for r in (repo.get_request(i) for i in ids)
+                if r is not None and r.status in repo.OPEN_STATUSES]
+    for request in open_now:
+        patient = repo.get_patient(request.patient_id)
+        if patient is None or donor.blood_group not in compatible_groups(patient.blood_group):
+            continue
+        if any(c.donor_id == donor_id for c in repo.list_contacts(request.request_id)):
+            continue
+        now = datetime.now(timezone.utc).isoformat()
+        return [(request, Contact(request_id=request.request_id, donor_id=donor_id,
+                                  status=ContactStatus.SENT, channel=donor.channel,
+                                  rank=0, contacted_at=now, note="volunteered"))]
+    return []
 
 
 def _where(repo, request) -> str:
@@ -79,7 +110,11 @@ def record_answer(willing: bool, note: str | None = None,
         return "I do not know which donor you are, so I cannot record that."
     rows = _unanswered(repo, donor_id)
     if not rows:
-        return "There is no open request to answer."
+        # Somebody who offers before being asked has no contact row to answer, so the
+        # pledge had nowhere to go and the agent would confirm a promise nothing kept.
+        rows = _volunteered(repo, donor_id)
+    if not rows:
+        return "There is no open request they can help with right now."
     if len(rows) > 1:
         listed = ", ".join(r.request_id for r, _ in rows)
         return f"They have more than one open request ({listed}). Ask which one first."

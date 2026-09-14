@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import threading
 
 import boto3
 from botocore.config import Config as BotoConfig
@@ -88,6 +89,19 @@ def apology(exc: Exception) -> str:
             "and a coordinator will step in if it keeps happening.")
 
 
+def _typing(channel_name: str, recipient: str) -> None:
+    channel = registry().get(channel_name)
+    if channel:
+        asyncio.run(channel.typing(recipient))
+
+
+def _typing_until(channel_name: str, recipient: str, done: threading.Event) -> None:
+    """Telegram clears the indicator after about five seconds, so a graph run that takes
+    most of a minute needs it renewed or the chat looks abandoned halfway through."""
+    while not done.wait(4.0):
+        _typing(channel_name, recipient)
+
+
 def _send(channel_name: str, recipient: str, body: str) -> None:
     channel = registry().get(channel_name)
     if channel:
@@ -139,6 +153,7 @@ def reply(event: dict) -> dict:
         sent.append(answer)
         _send(channel, reply_to, answer)
 
+    _typing(channel, reply_to)
     out = ask_asha(sender, message, channel, on_answer=deliver)
     if out.get("text") and not sent:
         _send(channel, reply_to, out["text"])
@@ -153,6 +168,10 @@ def search(event: dict) -> dict:
     from donorpanel.graph import flow
 
     panel = pool.ensure()
+    channel, reply_to = event.get("channel", "telegram"), event["reply_to"]
+    done = threading.Event()
+    threading.Thread(target=_typing_until, args=(channel, reply_to, done),
+                     daemon=True).start()
     try:
         out = flow.run(event["ask"], panel, None, None, "public")
         told = _summarise(panel, out)
@@ -160,6 +179,8 @@ def search(event: dict) -> dict:
         log.warning("chat-started request failed", exc_info=True)
         told = ("I could not finish searching just now. A coordinator will pick this up "
                 "and come back to you.")
+    finally:
+        done.set()
     _send(event.get("channel", "telegram"), event["reply_to"], told)
     return {"ok": True}
 

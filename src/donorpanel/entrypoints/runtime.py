@@ -22,7 +22,7 @@ app = BedrockAgentCoreApp()
 # store does not reach it. One session here degraded until every call timed out at 20s
 # while a fresh id answered in 5.7s, with no way to reset it by id. Bumping this abandons
 # the bad sessions and starts clean ones, so it is the lever for exactly that.
-SESSION_EPOCH = "2"
+SESSION_EPOCH = "5"
 
 
 def session_id(sender: str) -> str:

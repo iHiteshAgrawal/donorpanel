@@ -1,6 +1,6 @@
 from strands import ToolContext, tool
 
-from donorpanel.domain import Donor
+from donorpanel.domain import Donor, distance_km
 from donorpanel.domain.matching import COMPATIBLE_DONORS, compatible_groups
 
 GROUPS = tuple(COMPATIBLE_DONORS.keys())
@@ -11,19 +11,45 @@ def _state(tool_context: ToolContext):
     return state["repo"], state.get("sender"), state.get("channel", "telegram")
 
 
+def mine(repo, sender):
+    """The donor this person registered, matched on the id derived from their sender.
+
+    Not on `address`: seeded demo donors deliberately share the operator's contact address so
+    outreach reaches a real phone, which made every one of them look like the same human. The
+    same collision would hit two real donors sharing a household number.
+    """
+    prefix = donor_id_for(sender, "")
+    return next((d for d in repo.list_donors() if d.donor_id.startswith(prefix)), None)
+
+
+def donor_id_for(sender, group: str) -> str:
+    suffix = group.lower().replace("+", "p").replace("-", "n")
+    return f"d-{str(sender)[-6:]}-{suffix}"
+
+
 @tool(context=True)
 def who_needs_blood(tool_context: ToolContext) -> str:
     """The patient currently looking for donors, and which blood groups can help them.
     Use this when someone asks who they would be donating to, or whether their group
     is useful."""
-    repo, _, _ = _state(tool_context)
+    repo, sender, _ = _state(tool_context)
     patient = repo.get_patient("p-ravi")
     if patient is None:
         return "Nobody is waiting right now."
     helpful = ", ".join(compatible_groups(patient.blood_group)) or patient.blood_group
-    return (f"{patient.name} has {patient.condition.value} and needs {patient.blood_group} "
+    said = (f"{patient.name} has {patient.condition.value} and needs {patient.blood_group} "
             f"blood every few weeks, at {patient.hospital} in {patient.city}. "
             f"Donors with these groups can help: {helpful}.")
+
+    # The ranking already measures this, so without it here the model answers "quite far"
+    # from its own idea of Indian geography rather than from the coordinates we hold.
+    donor = mine(repo, sender) if sender else None
+    if donor:
+        km = distance_km(donor.lat, donor.lon, patient.lat, patient.lon)
+        if km is not None:
+            said += (f" They are about {km:,.0f} km from {donor.city}, which is the real "
+                     f"distance between the two, so state it as given.")
+    return said
 
 
 @tool
@@ -72,11 +98,11 @@ def am_i_registered(tool_context: ToolContext) -> str:
     repo, sender, _ = _state(tool_context)
     if not sender:
         return "I cannot tell who you are on this channel."
-    for donor in repo.list_donors():
-        if donor.address == str(sender):
-            return (f"Already registered as {donor.name}, {donor.blood_group}, "
-                    f"in {donor.city}. Consent is "
-                    f"{'on file' if donor.consent else 'not given yet'}.")
+    donor = mine(repo, sender)
+    if donor:
+        return (f"Already registered as {donor.name}, {donor.blood_group}, "
+                f"in {donor.city}. Consent is "
+                f"{'on file' if donor.consent else 'not given yet'}.")
     return "Not registered yet."
 
 
@@ -105,8 +131,8 @@ def register_donor(name: str, city: str, blood_group: str, consent: bool,
 
     from donorpanel.adapters.geo import Geocoder
 
-    existing = next((d for d in repo.list_donors() if d.address == str(sender)), None)
-    donor_id = existing.donor_id if existing else f"d-{str(sender)[-6:]}-{group.lower().replace('+','p').replace('-','n')}"
+    existing = mine(repo, sender)
+    donor_id = existing.donor_id if existing else donor_id_for(sender, group)
     where = Geocoder().locate(city)
     repo.put_donor(Donor(
         donor_id=donor_id, name=name.strip()[:60], blood_group=group,

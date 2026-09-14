@@ -46,3 +46,8 @@ class Channel(ABC):
 
     @abstractmethod
     def available(self) -> bool: ...
+
+    async def typing(self, recipient: str) -> None:
+        """A channel that can show the person something is happening does so here.
+        Email cannot, so the default does nothing."""
+        return
